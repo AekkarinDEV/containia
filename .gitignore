@@ -1,0 +1,9 @@
+# Binaries
+containia
+*.exe
+*.test
+
+# OS & temporary files
+*.tmp
+.DS_Store
+Thumbs.db
