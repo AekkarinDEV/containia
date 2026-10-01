@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/app.css">
 </head>
-<body class="dark-theme">
+<body class="dark-theme" data-mode="terminal">
   <!-- App Shell -->
   <div class="app-layout">
     <!-- Sidebar Navigation -->
@@ -80,14 +80,24 @@
         </button>
       </nav>
 
+      <div class="mode-panel" aria-label="Workspace mode">
+        <span class="mode-eyebrow">WORKSPACE MODE</span>
+        <div class="mode-switch" role="group" aria-label="Choose workspace mode">
+          <button type="button" class="mode-option" data-mode-option="compact" onclick="setMode('compact')" title="Dense operations view">Ops</button>
+          <button type="button" class="mode-option active" data-mode-option="terminal" onclick="setMode('terminal')" title="Terminal inspired view">Terminal</button>
+          <button type="button" class="mode-option" data-mode-option="guided" onclick="setMode('guided')" title="Guided view">Guided</button>
+        </div>
+        <p id="modeDescription" class="mode-description">A familiar command-line workspace with live controls.</p>
+      </div>
+
       <div class="sidebar-footer">
         <div class="kernel-status-card">
           <div class="status-indicator-row">
-            <span class="status-dot live" id="liveDot"></span>
-            <span class="status-label">Kernel Link Active</span>
+            <span class="status-dot" id="liveDot"></span>
+            <span class="status-label" id="connectionStatus" role="status">Connecting to runtime…</span>
           </div>
-          <p class="status-sub" id="bridgeSubnetText">containia0 (172.19.0.1)</p>
-          <div class="cgroup-tag">Cgroups v2 Unified</div>
+          <p class="status-sub" id="bridgeSubnetText">Checking bridge…</p>
+          <div class="cgroup-tag">Cgroups v2 runtime</div>
         </div>
       </div>
     </aside>
@@ -136,6 +146,15 @@
           </button>
         </div>
       </header>
+
+      <section class="workspace-context" aria-live="polite">
+        <div class="context-marker" id="contextMarker">$ containia ps -a</div>
+        <div>
+          <h2 id="contextTitle">Containers at a glance</h2>
+          <p id="contextText">Inspect running processes, read logs, and manage their lifecycle.</p>
+        </div>
+        <button type="button" id="contextAction" class="btn btn-secondary" onclick="runContextAction()">New container</button>
+      </section>
 
       <!-- KPI Summary Cards -->
       <section class="kpi-grid">
@@ -198,8 +217,8 @@
               </svg>
             </div>
           </div>
-          <div class="kpi-value" id="kpiBridgeIP">172.19.0.1</div>
-          <div class="kpi-footer">NAT Masquerade Enabled</div>
+          <div class="kpi-value" id="kpiBridgeIP">—</div>
+          <div class="kpi-footer">Configured bridge gateway</div>
         </div>
       </section>
 
@@ -212,7 +231,7 @@
               <span class="panel-count" id="containersCountBadge">0 containers</span>
             </div>
             <div class="panel-filter-group">
-              <input type="text" id="filterContainersInput" class="input-search" placeholder="Search container by name, image, ID..." oninput="renderContainersTable()">
+              <input type="search" id="filterContainersInput" class="input-search" aria-label="Search containers" placeholder="Search name, image, ID or IP" oninput="renderContainersTable()">
               <label class="checkbox-label">
                 <input type="checkbox" id="chkShowAll" checked onchange="fetchDashboardData()">
                 <span>Show Stopped / Exited</span>
@@ -252,6 +271,7 @@
               <h2 class="panel-title">Local OCI Images</h2>
               <span class="panel-count" id="imagesCountBadge">0 images</span>
             </div>
+            <input type="search" id="filterImagesInput" class="input-search" aria-label="Search images" placeholder="Search repository, tag or ID" oninput="renderImagesTable()">
           </div>
 
           <div class="table-responsive">
@@ -354,10 +374,9 @@ EXPOSE 5432</textarea>
                 <h3>containia0 (Bridge)</h3>
               </div>
               <div class="net-node-body">
-                <div class="net-row"><span class="k">Gateway:</span><span class="v">172.19.0.1</span></div>
-                <div class="net-row"><span class="k">Subnet:</span><span class="v">172.19.0.0/24</span></div>
-                <div class="net-row"><span class="k">IP Forwarding:</span><span class="v status-good">/proc/sys/net/ipv4/ip_forward = 1</span></div>
-                <div class="net-row"><span class="k">iptables NAT:</span><span class="v status-good">MASQUERADE on POSTROUTING</span></div>
+                <div class="net-row"><span class="k">Gateway:</span><span class="v" id="networkGateway">Checking…</span></div>
+                <div class="net-row"><span class="k">Subnet:</span><span class="v" id="networkSubnet">Checking…</span></div>
+                <div class="net-row"><span class="k">Network state:</span><span class="v" id="networkState">Checking…</span></div>
               </div>
             </div>
 
@@ -626,11 +645,11 @@ EXPOSE 5432</textarea>
   </div>
 
   <!-- Modal: Run New Container -->
-  <div class="modal-backdrop" id="runModal">
-    <div class="modal-dialog">
+  <div class="modal-backdrop" id="runModal" role="dialog" aria-modal="true" aria-labelledby="runModalTitle" aria-hidden="true" inert>
+    <div class="modal-dialog" tabindex="-1">
       <div class="modal-header">
-        <h3 class="modal-title">Launch New Container</h3>
-        <button class="modal-close" onclick="closeRunModal()">&times;</button>
+        <h3 class="modal-title" id="runModalTitle">Launch New Container</h3>
+        <button class="modal-close" type="button" aria-label="Close launch dialog" onclick="closeRunModal()">&times;</button>
       </div>
       <form id="runContainerForm" onsubmit="handleRunSubmit(event)">
         <div class="modal-body">
@@ -684,11 +703,11 @@ EXPOSE 5432</textarea>
   </div>
 
   <!-- Modal: Pull Image -->
-  <div class="modal-backdrop" id="pullModal">
-    <div class="modal-dialog">
+  <div class="modal-backdrop" id="pullModal" role="dialog" aria-modal="true" aria-labelledby="pullModalTitle" aria-hidden="true" inert>
+    <div class="modal-dialog" tabindex="-1">
       <div class="modal-header">
-        <h3 class="modal-title">Pull OCI Image from Docker Hub</h3>
-        <button class="modal-close" onclick="closePullModal()">&times;</button>
+        <h3 class="modal-title" id="pullModalTitle">Pull OCI Image from Docker Hub</h3>
+        <button class="modal-close" type="button" aria-label="Close pull dialog" onclick="closePullModal()">&times;</button>
       </div>
       <form id="pullImageForm" onsubmit="handlePullSubmit(event)">
         <div class="modal-body">
@@ -722,8 +741,8 @@ EXPOSE 5432</textarea>
   </div>
 
   <!-- Modal: Container Logs -->
-  <div class="modal-backdrop" id="logsModal">
-    <div class="modal-dialog modal-lg">
+  <div class="modal-backdrop" id="logsModal" role="dialog" aria-modal="true" aria-labelledby="logsModalTitle" aria-hidden="true" inert>
+    <div class="modal-dialog modal-lg" tabindex="-1">
       <div class="modal-header">
         <div>
           <h3 class="modal-title" id="logsModalTitle">Container Logs</h3>
@@ -731,7 +750,7 @@ EXPOSE 5432</textarea>
         </div>
         <div class="flex gap-2 items-center">
           <button class="btn-xs" onclick="fetchActiveLogs()">Refresh</button>
-          <button class="modal-close" onclick="closeLogsModal()">&times;</button>
+          <button class="modal-close" type="button" aria-label="Close logs dialog" onclick="closeLogsModal()">&times;</button>
         </div>
       </div>
       <div class="modal-body p-0">
@@ -741,7 +760,7 @@ EXPOSE 5432</textarea>
   </div>
 
   <!-- Notification Toast -->
-  <div class="toast-container" id="toastContainer"></div>
+  <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
 
   <script src="/assets/app.js"></script>
 </body>

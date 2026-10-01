@@ -131,6 +131,8 @@ sudo ./containia ui -p 8080
 ```
 Open **http://localhost:8080** in your browser to monitor real-time containers, live cgroup memory/CPU usage, inspect OverlayFS layers, and manage OCI images!
 
+The dashboard offers three selectable workspaces. **Terminal** opens by default with command-style context; **Ops** shows denser status and resource data; **Guided** walks through pulling an image, running a container, and reading its logs. The selected mode is saved in your browser. All three modes use the same runtime actions and include Containers, Images, Builder, Network, and Docs.
+
 ---
 
 ## 🏗️ Architecture
