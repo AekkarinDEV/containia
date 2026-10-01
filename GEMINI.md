@@ -151,14 +151,20 @@ containia/
 │   └── containia/
 │       └── main.go           # CLI Entrypoint (run, ps, images, pull, stop, rm, logs, exec)
 ├── pkg/
+│   ├── builder/              # Dockerfile parser & layer builder (containia build)
+│   │   └── builder.go
 │   ├── config/               # Types, states, and runtime directory layout
 │   │   ├── types.go
 │   │   └── paths.go
-│   ├── image/                # Rootfs puller & Alpine tarball unpacker
-│   │   └── image.go
+│   ├── dashboard/            # Embedded Web Monitor GUI & REST API
+│   │   ├── dashboard.go
+│   │   └── assets/           # HTML5, modern CSS, reactive JS
+│   ├── image/                # OCI Registry v2 client, layer caching, image manager
+│   │   ├── image.go
+│   │   └── registry.go
 │   ├── cgroup/               # Cgroups v2 manager (memory.max, cpu.max, pids.max)
 │   │   └── cgroup.go
-│   ├── rootfs/               # OverlayFS layered storage & pivot_root isolation
+│   ├── rootfs/               # Multi-layer OverlayFS & pivot_root isolation
 │   │   └── rootfs.go
 │   ├── network/              # Linux Bridge (containia0), veth pair, netns
 │   │   └── network.go
@@ -186,4 +192,14 @@ All core container subsystems have been fully implemented and verified under Lin
   - `containia exec <cid> <cmd>`: Attaches to running container namespaces via `nsenter`.
   - `containia stop <cid>`: Graceful SIGTERM followed by SIGKILL.
   - `containia rm [-f] <cid>`: Safe unmount of OverlayFS and cleanup of metadata.
+- [x] **Phase 6: OCI Image System & Dockerfile Builder (Podman parity):**
+  - **Docker Registry v2 Client:** Token authentication (`auth.docker.io`), multi-arch manifest resolution (`linux/amd64`), automated 401 retry token refresh.
+  - **Multi-layer OverlayFS:** Layers cached in `/var/lib/containia/layers/<digest>/fs` and mounted stacked via `lowerdir=l_top:...:l_bottom`.
+  - **Dockerfile Builder (`containia build`):** Parses `FROM`, `ENV`, `WORKDIR`, `EXPOSE`, `CMD`, `ENTRYPOINT`, `COPY`, creates stacked layers, and writes content-addressable metadata.
+  - **Image GC & Lifecycle:** `containia rmi <image>` removes images and cleans orphaned layers.
+  - **Runtime Auto-Config:** Container entrypoint, cmd, env, and workingdir are automatically inherited from image metadata.
+- [x] **Phase 7: Web Monitor GUI Dashboard (`containia ui`):**
+  - **Embedded Web Server:** Single binary embeds HTML5, modern Vanilla CSS, and reactive JS via `go:embed`.
+  - **Real-time Monitoring:** Cgroups v2 live memory/CPU stats, process counts, container statuses, and virtual bridge routing.
+  - **Management Console:** Stop/Remove containers, live log streaming, image puller, layer visualizer, and Dockerfile builder GUI.
 

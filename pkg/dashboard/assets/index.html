@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Containia Monitor &mdash; Container Runtime Dashboard</title>
+  <meta name="description" content="Real-time monitoring and management dashboard for Containia Mini Container Runtime">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body class="dark-theme">
+  <!-- App Shell -->
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h2>Containia</h2>
+          <span class="badge-version" id="appVersion">v0.2.0 OCI</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" id="tabBtnContainers" onclick="switchTab('containers')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span>Containers</span>
+          <span class="nav-badge" id="navRunningCount">0</span>
+        </button>
+
+        <button class="nav-item" id="tabBtnImages" onclick="switchTab('images')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+          </svg>
+          <span>Images &amp; Layers</span>
+          <span class="nav-badge" id="navImagesCount">0</span>
+        </button>
+
+        <button class="nav-item" id="tabBtnBuilder" onclick="switchTab('builder')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+          <span>Dockerfile Builder</span>
+        </button>
+
+        <button class="nav-item" id="tabBtnNetwork" onclick="switchTab('network')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span>Kernel &amp; Network</span>
+        </button>
+
+        <button class="nav-item" id="tabBtnDocs" onclick="switchTab('docs')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="8" y1="6" x2="16" y2="6"></line>
+            <line x1="8" y1="10" x2="16" y2="10"></line>
+            <line x1="8" y1="14" x2="12" y2="14"></line>
+          </svg>
+          <span>Docs &amp; Guide</span>
+          <span class="badge-version">Guide</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="kernel-status-card">
+          <div class="status-indicator-row">
+            <span class="status-dot live" id="liveDot"></span>
+            <span class="status-label">Kernel Link Active</span>
+          </div>
+          <p class="status-sub" id="bridgeSubnetText">containia0 (172.19.0.1)</p>
+          <div class="cgroup-tag">Cgroups v2 Unified</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Navigation Bar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title" id="pageTitle">Container Dashboard</h1>
+          <p class="page-subtitle">Real-time Linux Namespace &amp; Cgroups v2 Monitor</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="refresh-control">
+            <span class="refresh-label">Poll:</span>
+            <select id="pollIntervalSelect" onchange="changePollInterval(this.value)">
+              <option value="1000">1s</option>
+              <option value="2000" selected>2s</option>
+              <option value="5000">5s</option>
+              <option value="0">Paused</option>
+            </select>
+            <button class="btn-icon" id="btnRefreshManual" onclick="fetchDashboardData()" title="Refresh Now">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </button>
+          </div>
+
+          <button class="btn btn-secondary" id="btnOpenPullModal" onclick="openPullModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Pull Image
+          </button>
+
+          <button class="btn btn-primary" id="btnOpenRunModal" onclick="openRunModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="10 8 16 12 10 16 10 8"></polygon>
+            </svg>
+            New Container
+          </button>
+        </div>
+      </header>
+
+      <!-- KPI Summary Cards -->
+      <section class="kpi-grid">
+        <div class="kpi-card" id="cardRunning">
+          <div class="kpi-header">
+            <span class="kpi-title">Running Containers</span>
+            <div class="kpi-icon running-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiRunningVal">0</div>
+          <div class="kpi-footer" id="kpiTotalVal">0 total containers</div>
+        </div>
+
+        <div class="kpi-card" id="cardMemory">
+          <div class="kpi-header">
+            <span class="kpi-title">Active Memory Usage</span>
+            <div class="kpi-icon memory-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+              </svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiMemoryVal">0 MB</div>
+          <div class="kpi-footer">Enforced via cgroups v2</div>
+        </div>
+
+        <div class="kpi-card" id="cardImages">
+          <div class="kpi-header">
+            <span class="kpi-title">OCI Images</span>
+            <div class="kpi-icon images-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="m4.93 4.93 4.24 4.24"></path>
+                <path d="m14.83 9.17 4.24-4.24"></path>
+                <path d="m14.83 14.83 4.24 4.24"></path>
+                <path d="m9.17 14.83-4.24 4.24"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiImagesVal">0</div>
+          <div class="kpi-footer" id="kpiLayersVal">0 cached layers</div>
+        </div>
+
+        <div class="kpi-card" id="cardNetwork">
+          <div class="kpi-header">
+            <span class="kpi-title">Virtual Bridge IP</span>
+            <div class="kpi-icon network-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="16" y="16" width="6" height="6" rx="1"></rect>
+                <rect x="2" y="16" width="6" height="6" rx="1"></rect>
+                <rect x="9" y="2" width="6" height="6" rx="1"></rect>
+                <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path>
+                <path d="M12 12V8"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiBridgeIP">172.19.0.1</div>
+          <div class="kpi-footer">NAT Masquerade Enabled</div>
+        </div>
+      </section>
+
+      <!-- View 1: Containers View -->
+      <section id="viewContainers" class="tab-view active">
+        <div class="content-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2 class="panel-title">Containers List</h2>
+              <span class="panel-count" id="containersCountBadge">0 containers</span>
+            </div>
+            <div class="panel-filter-group">
+              <input type="text" id="filterContainersInput" class="input-search" placeholder="Search container by name, image, ID..." oninput="renderContainersTable()">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkShowAll" checked onchange="fetchDashboardData()">
+                <span>Show Stopped / Exited</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="containersTable">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Name / ID</th>
+                  <th>Image</th>
+                  <th>IP Address</th>
+                  <th>Memory (Live / Limit)</th>
+                  <th>CPUs</th>
+                  <th>Created</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="containersTableBody">
+                <tr>
+                  <td colspan="8" class="text-center py-8 text-muted">Loading containers...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 2: Images & Layers View -->
+      <section id="viewImages" class="tab-view">
+        <div class="content-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2 class="panel-title">Local OCI Images</h2>
+              <span class="panel-count" id="imagesCountBadge">0 images</span>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="imagesTable">
+              <thead>
+                <tr>
+                  <th>Repository</th>
+                  <th>Tag</th>
+                  <th>Image ID</th>
+                  <th>Size</th>
+                  <th>Layers Count</th>
+                  <th>Created</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="imagesTableBody">
+                <tr>
+                  <td colspan="7" class="text-center py-8 text-muted">Loading images...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="content-panel mt-6">
+          <div class="panel-header">
+            <h2 class="panel-title">OverlayFS Layer Cache (/var/lib/containia/layers)</h2>
+          </div>
+          <div class="layers-grid" id="layersGrid">
+            <div class="text-muted p-4">Loading layers...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 3: Dockerfile Builder View -->
+      <section id="viewBuilder" class="tab-view">
+        <div class="content-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Interactive Dockerfile Builder</h2>
+              <p class="panel-subtitle">Build layered OCI images with containia build</p>
+            </div>
+            <button class="btn btn-primary" id="btnTriggerBuild" onclick="triggerBuild()">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              Build Image
+            </button>
+          </div>
+
+          <div class="builder-layout">
+            <div class="builder-inputs">
+              <div class="form-group">
+                <label for="buildTargetTag">Image Name &amp; Tag:</label>
+                <input type="text" id="buildTargetTag" class="input-text" placeholder="e.g. my-app:1.0" value="my-db:1.0">
+              </div>
+
+              <div class="form-group">
+                <label for="buildContextDir">Context Directory:</label>
+                <input type="text" id="buildContextDir" class="input-text" placeholder="e.g. ./Project/db" value="./Project/db">
+              </div>
+
+              <div class="form-group">
+                <label for="buildDockerfileEditor">Dockerfile Instructions:</label>
+                <textarea id="buildDockerfileEditor" class="code-editor" rows="12" spellcheck="false">FROM postgres:18
+
+ENV POSTGRES_USER=postgres
+ENV POSTGRES_DB=os
+ENV POSTGRES_PASSWORD=password
+
+EXPOSE 5432</textarea>
+              </div>
+            </div>
+
+            <div class="builder-output">
+              <div class="terminal-header">
+                <span class="terminal-title">Build Console Output</span>
+                <button class="btn-xs" onclick="clearBuildLogs()">Clear</button>
+              </div>
+              <pre class="terminal-body" id="buildConsoleOutput">Ready to build. Click "Build Image" above to start.</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 4: Kernel & Network View -->
+      <section id="viewNetwork" class="tab-view">
+        <div class="content-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Virtual Networking &amp; Kernel Namespaces Topology</h2>
+              <p class="panel-subtitle">Hardware &amp; Linux Subsystem Routing Architecture</p>
+            </div>
+          </div>
+
+          <div class="network-diagram">
+            <div class="net-node host-node">
+              <div class="net-node-header">
+                <span class="net-badge">Host Linux Kernel</span>
+                <h3>containia0 (Bridge)</h3>
+              </div>
+              <div class="net-node-body">
+                <div class="net-row"><span class="k">Gateway:</span><span class="v">172.19.0.1</span></div>
+                <div class="net-row"><span class="k">Subnet:</span><span class="v">172.19.0.0/24</span></div>
+                <div class="net-row"><span class="k">IP Forwarding:</span><span class="v status-good">/proc/sys/net/ipv4/ip_forward = 1</span></div>
+                <div class="net-row"><span class="k">iptables NAT:</span><span class="v status-good">MASQUERADE on POSTROUTING</span></div>
+              </div>
+            </div>
+
+            <div class="net-connector">
+              <div class="connector-line"></div>
+              <span class="connector-label">veth-host &harr; veth-cont (CLONE_NEWNET)</span>
+            </div>
+
+            <div class="net-node-list" id="networkContainersList">
+              <!-- Dynamically populated container network cards -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 5: Documentation & Guide View -->
+      <section id="viewDocs" class="tab-view">
+        <div class="content-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Containia Complete Guide &amp; Documentation</h2>
+              <p class="panel-subtitle">From installation on Windows/WSL2 and Linux to running OCI containers &amp; GUI monitoring</p>
+            </div>
+          </div>
+
+          <div class="docs-wrapper">
+            <!-- Section 1: Introduction -->
+            <div class="docs-section">
+              <h3 class="docs-section-title">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                1. What is Containia?
+              </h3>
+              <p class="step-desc">
+                <strong>Containia</strong> is an educational, production-patterned Mini Container Runtime built from scratch in Go. It does not rely on Docker daemon or runc &mdash; it orchestrates Linux kernel primitives directly:
+              </p>
+              <div class="info-callout">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+                <div>
+                  <strong>Core Rule:</strong> A container is not a Virtual Machine (VM). It is simply an ordinary Linux process running with restricted view boundaries (<strong>Namespaces</strong>), resource limits (<strong>Cgroups v2</strong>), isolated layered filesystem (<strong>OverlayFS + pivot_root</strong>), and virtual routing (<strong>Linux Bridge + veth</strong>).
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 2: Installation on Windows & Linux -->
+            <div class="docs-section">
+              <h3 class="docs-section-title">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                2. Installation &amp; Setup Guide
+              </h3>
+
+              <!-- Step 1 -->
+              <div class="step-card">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <div class="step-title">Enter WSL2 Environment (Windows Users)</div>
+                  <p class="step-desc">Because Linux namespaces and cgroups v2 require a Linux Kernel, on Windows open PowerShell or Windows Terminal and launch WSL:</p>
+                  <div class="code-snippet">
+                    <code>wsl</code>
+                    <button class="btn-copy" onclick="copySnippet(this, 'wsl')">Copy</button>
+                  </div>
+                  <p class="step-desc text-xs text-dim">Note: You do not need to specify flags if docker-desktop or Ubuntu is your default WSL distro.</p>
+                </div>
+              </div>
+
+              <!-- Step 2 -->
+              <div class="step-card">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <div class="step-title">Navigate to Project Directory in WSL</div>
+                  <p class="step-desc">The project is placed in your WSL filesystem (or mounted from host):</p>
+                  <div class="code-snippet">
+                    <code>cd /root/containia</code>
+                    <button class="btn-copy" onclick="copySnippet(this, 'cd /root/containia')">Copy</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 3 -->
+              <div class="step-card">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <div class="step-title">Compile Binary (Optional if binary already present)</div>
+                  <p class="step-desc">If you modify the Go source code, build the Linux binary:</p>
+                  <div class="code-snippet">
+                    <code>go build -o containia ./cmd/containia</code>
+                    <button class="btn-copy" onclick="copySnippet(this, 'go build -o containia ./cmd/containia')">Copy</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 4 -->
+              <div class="step-card">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                  <div class="step-title">Launch Web Monitor GUI</div>
+                  <p class="step-desc">Start this web dashboard server on port 8080:</p>
+                  <div class="code-snippet">
+                    <code>./containia ui -p 8080</code>
+                    <button class="btn-copy" onclick="copySnippet(this, './containia ui -p 8080')">Copy</button>
+                  </div>
+                  <p class="step-desc">Then open your browser in Windows at <strong>http://localhost:8080</strong></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 3: Essential CLI Cheatsheet -->
+            <div class="docs-section">
+              <h3 class="docs-section-title">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="4 17 10 11 4 5"></polyline>
+                  <line x1="12" y1="19" x2="20" y2="19"></line>
+                </svg>
+                3. CLI Commands Reference
+              </h3>
+
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Command</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Pull OCI Image</strong></td>
+                      <td><code>./containia pull alpine</code><br><code>./containia pull postgres:18</code></td>
+                      <td>Downloads multi-layer OCI images from Docker Hub (registry-1.docker.io) with auto token refresh.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Interactive Shell</strong></td>
+                      <td><code>./containia run -it alpine /bin/sh</code></td>
+                      <td>Launches container attached to terminal with PID 1 isolation and private hostname.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Run Background Container</strong></td>
+                      <td><code>./containia run -d --name my-app -m 256m --cpus 0.5 alpine sleep 3600</code></td>
+                      <td>Runs container in detached mode with memory limit (256MB) and CPU limit (0.5 core).</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Build Dockerfile</strong></td>
+                      <td><code>./containia build -t my-db:1.0 ./Project/db</code></td>
+                      <td>Parses FROM, ENV, WORKDIR, EXPOSE, CMD, ENTRYPOINT, COPY and builds layered image.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>List Containers</strong></td>
+                      <td><code>./containia ps</code> (or <code>-a</code>)</td>
+                      <td>Shows running containers, image names, commands, IP addresses, and uptime.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Container Logs</strong></td>
+                      <td><code>./containia logs &lt;name-or-id&gt;</code></td>
+                      <td>Streams stdout/stderr output from detached containers.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Execute in Container</strong></td>
+                      <td><code>./containia exec &lt;name&gt; ps aux</code></td>
+                      <td>Enters running container's namespaces via nsenter to run diagnostics.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Stop Container</strong></td>
+                      <td><code>./containia stop &lt;name-or-id&gt;</code></td>
+                      <td>Sends graceful SIGTERM followed by SIGKILL and cleans up bridge veth.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Remove Container</strong></td>
+                      <td><code>./containia rm &lt;name-or-id&gt;</code></td>
+                      <td>Safely unmounts OverlayFS layers and cleans up /var/lib/containia state.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Remove Image (RMI)</strong></td>
+                      <td><code>./containia rmi &lt;image-name&gt;</code></td>
+                      <td>Deletes image descriptor and garbage-collects unreferenced layers.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Section 4: Web UI Features Guide -->
+            <div class="docs-section">
+              <h3 class="docs-section-title">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9"></path>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+                4. How to Use the Web Dashboard
+              </h3>
+
+              <div class="faq-grid">
+                <div class="faq-card">
+                  <div class="faq-q">🚀 Launching Containers via GUI</div>
+                  <div class="faq-a">Click the <strong>"New Container"</strong> button at top right. Select an image from local quick-picks, set memory boundaries (e.g. 256m), customize ENV variables, and click Launch.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">📋 Real-time Logs Terminal</div>
+                  <div class="faq-a">On any container row, click <strong>"Logs"</strong> to open the live terminal viewer. The log window polls output automatically every 2 seconds.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">💿 Pulling Images from Docker Hub</div>
+                  <div class="faq-a">Click <strong>"Pull Image"</strong> at top right. Choose popular images like <code>alpine</code>, <code>postgres:18</code>, <code>node:20-alpine</code> or type any public Docker Hub reference. Progress streams live.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">🏗️ Building from Dockerfile</div>
+                  <div class="faq-a">Switch to the <strong>"Dockerfile Builder"</strong> tab. You can inspect or modify instructions (like the Project/db Dockerfile) and click <strong>"Build Image"</strong> to view real-time build output.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">🌐 Virtual Network Inspector</div>
+                  <div class="faq-a">Switch to the <strong>"Kernel &amp; Network"</strong> tab to see the Linux Bridge <code>containia0</code>, subnet routing, veth interfaces, and NAT MASQUERADE rules.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">⚡ Real-time Cgroups v2 Meters</div>
+                  <div class="faq-a">The Memory bar in the Containers table dynamically reads <code>/sys/fs/cgroup/containia/&lt;id&gt;/memory.current</code> directly from the Linux Kernel to show actual RAM usage.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 5: Troubleshooting & FAQ -->
+            <div class="docs-section">
+              <h3 class="docs-section-title">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                5. Troubleshooting &amp; FAQ
+              </h3>
+
+              <div class="faq-grid">
+                <div class="faq-card">
+                  <div class="faq-q">Q: Why does running ./containia directly in PowerShell fail?</div>
+                  <div class="faq-a">A: <code>containia</code> is an ELF Linux executable. Linux Namespaces, Cgroups v2, and OverlayFS are core Linux Kernel features. On Windows, always run via WSL by typing <code>wsl</code> first.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">Q: Can I access http://localhost:8080 from Windows?</div>
+                  <div class="faq-a">A: Yes! WSL2 automatically mirrors ports bound on <code>0.0.0.0</code> to Windows <code>localhost</code>, allowing you to view the dashboard in Chrome, Edge, or Firefox seamlessly.</div>
+                </div>
+
+                <div class="faq-card">
+                  <div class="faq-q">Q: How does Containia prevent duplicate layer downloads?</div>
+                  <div class="faq-a">A: Containia uses Content-Addressable Storage in <code>/var/lib/containia/layers/&lt;sha256&gt;</code>. If two images share base layers, Containia identifies the SHA256 digest and reuses cached layers instantly.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Run New Container -->
+  <div class="modal-backdrop" id="runModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Launch New Container</h3>
+        <button class="modal-close" onclick="closeRunModal()">&times;</button>
+      </div>
+      <form id="runContainerForm" onsubmit="handleRunSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="runImageSelect">Image Reference *</label>
+            <input type="text" id="runImageSelect" class="input-text" placeholder="e.g. alpine, postgres:18, my-db:1.0" required>
+            <div class="quick-picks" id="quickPicksImages">
+              <!-- Dynamically filled with local image tags -->
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="runNameInput">Container Name (optional)</label>
+              <input type="text" id="runNameInput" class="input-text" placeholder="e.g. web-app">
+            </div>
+            <div class="form-group flex-1">
+              <label for="runCommandInput">Command (optional)</label>
+              <input type="text" id="runCommandInput" class="input-text" placeholder="Default from Image (or /bin/sh)">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="runMemoryInput">Memory Limit (cgroups v2)</label>
+              <input type="text" id="runMemoryInput" class="input-text" placeholder="e.g. 128m, 512m, 1g" value="256m">
+            </div>
+            <div class="form-group flex-1">
+              <label for="runCPUsInput">CPU Quota</label>
+              <input type="text" id="runCPUsInput" class="input-text" placeholder="e.g. 0.5, 1.0" value="0.5">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="runEnvInput">Environment Variables (one per line, KEY=VALUE)</label>
+            <textarea id="runEnvInput" class="code-editor" rows="3" placeholder="APP_ENV=production&#10;DEBUG=false"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="runVolumeInput">Volume Bind Mounts (one per line, host:container)</label>
+            <textarea id="runVolumeInput" class="code-editor" rows="2" placeholder="/mnt/host/d/dev/containia/Project:/app"></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeRunModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitRun">Launch Container</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Pull Image -->
+  <div class="modal-backdrop" id="pullModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Pull OCI Image from Docker Hub</h3>
+        <button class="modal-close" onclick="closePullModal()">&times;</button>
+      </div>
+      <form id="pullImageForm" onsubmit="handlePullSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="pullImageInput">Repository &amp; Tag *</label>
+            <input type="text" id="pullImageInput" class="input-text" placeholder="e.g. alpine, postgres:18, node:20-alpine, redis:latest" required>
+            <div class="quick-picks">
+              <span class="qp-label">Popular:</span>
+              <button type="button" class="qp-btn" onclick="setPullInput('alpine')">alpine</button>
+              <button type="button" class="qp-btn" onclick="setPullInput('postgres:18')">postgres:18</button>
+              <button type="button" class="qp-btn" onclick="setPullInput('node:20-alpine')">node:20-alpine</button>
+              <button type="button" class="qp-btn" onclick="setPullInput('redis:alpine')">redis:alpine</button>
+            </div>
+          </div>
+
+          <div class="pull-progress-panel" id="pullProgressPanel" style="display: none;">
+            <div class="spinner-row">
+              <span class="spinner"></span>
+              <span id="pullProgressText">Connecting to Docker Hub Registry v2...</span>
+            </div>
+            <pre class="terminal-body mt-3" id="pullProgressOutput"></pre>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closePullModal()">Close</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitPull">Pull from Registry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Container Logs -->
+  <div class="modal-backdrop" id="logsModal">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="logsModalTitle">Container Logs</h3>
+          <span class="modal-subtitle" id="logsModalSubtitle"></span>
+        </div>
+        <div class="flex gap-2 items-center">
+          <button class="btn-xs" onclick="fetchActiveLogs()">Refresh</button>
+          <button class="modal-close" onclick="closeLogsModal()">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body p-0">
+        <pre class="logs-terminal" id="logsContent">Loading logs...</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

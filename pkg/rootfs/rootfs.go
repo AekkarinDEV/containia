@@ -1,6 +1,7 @@
 package rootfs
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,14 +12,41 @@ import (
 )
 
 // SetupOverlay prepares and mounts the OverlayFS for a container.
-// It combines the read-only base image with a container-specific writable layer.
+// It combines the read-only base image layers with a container-specific writable layer.
 func SetupOverlay(containerID, imageName string) (string, error) {
 	cleanImage := strings.ReplaceAll(imageName, ":", "_")
 	cleanImage = strings.ReplaceAll(cleanImage, "/", "_")
-	lowerDir := config.GetImageRootfsDir(cleanImage)
 
-	if _, err := os.Stat(lowerDir); os.IsNotExist(err) {
-		return "", fmt.Errorf("base image rootfs not found at %s. Run 'containia pull %s' first", lowerDir, imageName)
+	var lowerDirOpt string
+
+	// 1. Check if multi-layer OCI image metadata exists
+	metaPath := config.GetImageMetaPath(cleanImage)
+	if data, err := os.ReadFile(metaPath); err == nil {
+		var meta config.ImageMetadata
+		if err := json.Unmarshal(data, &meta); err == nil && len(meta.Layers) > 0 {
+			var layerPaths []string
+			// In OverlayFS, left is highest (top), right is lowest (bottom).
+			// OCI manifest layers are ordered bottom-to-top.
+			// Reverse order: layer[N-1] down to layer[0]
+			for i := len(meta.Layers) - 1; i >= 0; i-- {
+				lfs := config.GetLayerFsDir(meta.Layers[i])
+				if _, err := os.Stat(lfs); err == nil {
+					layerPaths = append(layerPaths, lfs)
+				}
+			}
+			if len(layerPaths) > 0 {
+				lowerDirOpt = strings.Join(layerPaths, ":")
+			}
+		}
+	}
+
+	// 2. Fallback to legacy single rootfs directory
+	if lowerDirOpt == "" {
+		legacyLower := config.GetImageRootfsDir(cleanImage)
+		if _, err := os.Stat(legacyLower); os.IsNotExist(err) {
+			return "", fmt.Errorf("base image rootfs not found for %s. Run 'containia pull %s' first", imageName, imageName)
+		}
+		lowerDirOpt = legacyLower
 	}
 
 	upperDir := config.GetContainerUpperDir(containerID)
@@ -33,7 +61,7 @@ func SetupOverlay(containerID, imageName string) (string, error) {
 	}
 
 	// Mount OverlayFS
-	mountOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, upperDir, workDir)
+	mountOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDirOpt, upperDir, workDir)
 	if err := unix.Mount("overlay", mergedDir, "overlay", 0, mountOpts); err != nil {
 		return "", fmt.Errorf("failed to mount overlayfs on %s: %w", mergedDir, err)
 	}

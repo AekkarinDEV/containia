@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -15,6 +16,24 @@ func GetImagesDir() string {
 
 func GetImageRootfsDir(imageName string) string {
 	return filepath.Join(GetImagesDir(), imageName, "rootfs")
+}
+
+func GetImageMetaPath(imageName string) string {
+	return filepath.Join(GetImagesDir(), imageName, "image.json")
+}
+
+func GetLayersDir() string {
+	return filepath.Join(BaseDir, "layers")
+}
+
+func GetLayerDir(digest string) string {
+	clean := strings.ReplaceAll(digest, ":", "_")
+	clean = strings.ReplaceAll(clean, "/", "_")
+	return filepath.Join(GetLayersDir(), clean)
+}
+
+func GetLayerFsDir(digest string) string {
+	return filepath.Join(GetLayerDir(digest), "fs")
 }
 
 func GetContainersDir() string {

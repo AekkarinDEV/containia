@@ -32,6 +32,33 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		}
 	}
 
+	// Load image metadata if available to supply defaults
+	imgMeta, _ := image.LoadMetadata(imageName)
+	if len(command) == 0 && imgMeta != nil {
+		if len(imgMeta.Config.Entrypoint) > 0 {
+			command = append(command, imgMeta.Config.Entrypoint...)
+		}
+		if len(imgMeta.Config.Cmd) > 0 {
+			command = append(command, imgMeta.Config.Cmd...)
+		}
+	}
+	if len(command) == 0 {
+		command = []string{"/bin/sh"}
+	}
+
+	// Determine working directory
+	workDir := flags.WorkingDir
+	if workDir == "" && imgMeta != nil {
+		workDir = imgMeta.Config.WorkingDir
+	}
+
+	// Merge environment variables: image defaults + user flags
+	var mergedEnv []string
+	if imgMeta != nil {
+		mergedEnv = append(mergedEnv, imgMeta.Config.Env...)
+	}
+	mergedEnv = append(mergedEnv, flags.Env...)
+
 	// 2. Generate container ID and name
 	containerID := generateID()
 	containerName := flags.Name
@@ -72,8 +99,9 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		CPUShares:   cpuQuota,
 		PidsLimit:   flags.PidsLimit,
 		RootfsPath:  mergedDir,
+		WorkingDir:  workDir,
 		Volumes:     flags.Volumes,
-		Env:         flags.Env,
+		Env:         mergedEnv,
 	}
 	saveState(containerID, state)
 
@@ -186,8 +214,14 @@ func Child(containerID string, userCommand []string) error {
 		return fmt.Errorf("failed to set hostname: %w", err)
 	}
 
-	// 2. Load container state for volume bind mounts & custom envs
-	if state, err := loadState(containerID); err == nil && state != nil {
+	// 2. Default standard environment variables
+	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	os.Setenv("HOME", "/root")
+	os.Setenv("TERM", "xterm")
+
+	// 3. Load container state for volume bind mounts & custom envs
+	state, _ := loadState(containerID)
+	if state != nil {
 		if len(state.Volumes) > 0 {
 			if err := rootfs.BindMountVolumes(mergedDir, state.Volumes); err != nil {
 				return fmt.Errorf("failed to bind mount volumes: %w", err)
@@ -201,26 +235,34 @@ func Child(containerID string, userCommand []string) error {
 		}
 	}
 
-	// 3. Perform pivot_root to isolate filesystem (CLONE_NEWNS)
+	// 4. Perform pivot_root to isolate filesystem (CLONE_NEWNS)
 	if err := rootfs.PivotRoot(mergedDir); err != nil {
 		return fmt.Errorf("pivot_root failed: %w", err)
 	}
 
-	// 4. Mount essential virtual filesystems (/proc, /sys)
+	// 5. Mount essential virtual filesystems (/proc, /sys)
 	if err := rootfs.MountEssentialFilesystems(); err != nil {
 		return fmt.Errorf("failed to mount filesystems: %w", err)
 	}
 
-	// 5. Default standard environment variables
-	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-	os.Setenv("HOME", "/root")
-	os.Setenv("TERM", "xterm")
+	// 6. Set working directory
+	if state != nil && state.WorkingDir != "" {
+		_ = os.Chdir(state.WorkingDir)
+	}
 
-	// 5. Resolve command binary path inside container rootfs
+	if len(userCommand) == 0 {
+		return fmt.Errorf("no command specified for container")
+	}
+
+	// 7. Resolve command binary path inside container rootfs
 	cmdPath := userCommand[0]
 	if !strings.HasPrefix(cmdPath, "/") {
-		// Look up in PATH
-		for _, dir := range []string{"/bin", "/usr/bin", "/sbin", "/usr/sbin"} {
+		pathEnv := os.Getenv("PATH")
+		searchDirs := append(strings.Split(pathEnv, ":"), "/bin", "/usr/bin", "/sbin", "/usr/sbin")
+		for _, dir := range searchDirs {
+			if dir == "" {
+				continue
+			}
 			candidate := filepath.Join(dir, cmdPath)
 			if _, err := os.Stat(candidate); err == nil {
 				cmdPath = candidate
@@ -229,7 +271,7 @@ func Child(containerID string, userCommand []string) error {
 		}
 	}
 
-	// 6. Replace child process image with requested user command (syscall.Exec)
+	// 8. Replace child process image with requested user command (syscall.Exec)
 	return unix.Exec(cmdPath, userCommand, os.Environ())
 }
 

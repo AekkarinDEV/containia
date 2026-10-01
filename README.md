@@ -16,20 +16,29 @@
   - `CLONE_NEWNS`: Private mount table & `pivot_root`
   - `CLONE_NEWIPC`: Isolated shared memory & IPC queues
   - `CLONE_NEWNET`: Virtual network namespace
-- **Layered Storage (OverlayFS):**
-  - Read-only base rootfs (`lowerdir`)
+- **OCI Registry v2 Client (Docker Hub & Multi-arch):**
+  - Pull official images directly from Docker Hub (`postgres:18`, `alpine`, etc.)
+  - Multi-architecture manifest resolution (`linux/amd64`)
+  - Automated Bearer token authentication and refresh
+- **Layered Storage (Multi-layer OverlayFS):**
+  - Content-addressable layer cache in `/var/lib/containia/layers/` (prevents duplicate layer downloads)
+  - Stacked multi-layer OverlayFS mounts (`lowerdir=l_top:...:l_bottom`)
   - Ephemeral writable container layer (`upperdir`)
-  - Base images remain pristine and immutable
+- **Dockerfile Builder (`containia build`):**
+  - Build images from `Dockerfile` (`FROM`, `ENV`, `WORKDIR`, `EXPOSE`, `CMD`, `ENTRYPOINT`, `COPY`)
 - **Resource Limits (Cgroups v2):**
   - Memory limit (`-m / --memory`) via `/sys/fs/cgroup/containia/<id>/memory.max`
   - CPU quota (`--cpus`) via `cpu.max`
   - Fork-bomb protection (`--pids-limit`) via `pids.max`
-- **Volume Mounts:**
-  - Bind mount host paths into container with `-v host_path:container_path`
-- **Container Lifecycle Management (Docker CLI compatible):**
+- **Volume Mounts & Environment:**
+  - Bind mount host paths with `-v host_path:container_path`
+  - Environment variables `-e KEY=VALUE` + auto-inherited image metadata ENV
+- **Container Lifecycle Management (Docker/Podman CLI compatible):**
   - `containia pull <image>`
+  - `containia build -t <tag> [context]`
   - `containia images`
-  - `containia run [OPTIONS] <image> <command>`
+  - `containia rmi <image>`
+  - `containia run [OPTIONS] <image> [command]`
   - `containia ps [-a]`
   - `containia logs <container>`
   - `containia exec <container> <command>`
@@ -115,6 +124,12 @@ sudo ./containia logs my-app
 sudo ./containia stop my-app
 sudo ./containia rm my-app
 ```
+
+### 10. Launch Web Monitor GUI Dashboard
+```bash
+sudo ./containia ui -p 8080
+```
+Open **http://localhost:8080** in your browser to monitor real-time containers, live cgroup memory/CPU usage, inspect OverlayFS layers, and manage OCI images!
 
 ---
 
