@@ -14,9 +14,13 @@ const state = {
   activeTab: 'containers',
   activeLogContainerId: null,
   logTimer: null,
-  mode: 'terminal',
+  mode: 'compact',
   lastTrigger: null,
   polling: false,
+  loaded: new Set(),
+  running: false,
+  building: false,
+  pulling: false,
 };
 
 const modeCopy = {
@@ -60,9 +64,10 @@ const tabCopy = {
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
-  let savedMode = 'terminal';
-  try { savedMode = localStorage.getItem('containia-mode') || 'terminal'; } catch (_) {}
+  let savedMode = 'compact';
+  try { savedMode = localStorage.getItem('containia-mode') || 'compact'; } catch (_) {}
   setMode(savedMode);
+  switchTab('containers');
   setupDialogs();
   setupTableActions();
   fetchDashboardData();
@@ -70,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setMode(mode) {
-  if (!modeCopy[mode]) mode = 'terminal';
+  if (!['compact', 'terminal'].includes(mode)) mode = 'compact';
   state.mode = mode;
   document.body.dataset.mode = mode;
   document.querySelectorAll('[data-mode-option]').forEach(button => {
@@ -123,6 +128,7 @@ function updateContext() {
       description = 'Open Logs beside a container to inspect its output. Stop ends a running process.';
     }
   }
+  document.querySelector('.page-subtitle').textContent = tab[state.mode][1];
   document.getElementById('contextMarker').textContent = marker;
   document.getElementById('contextTitle').textContent = tab.title;
   document.getElementById('contextText').textContent = description;
@@ -145,6 +151,9 @@ function setConnectionStatus(status) {
   if (!label || !dot) return;
   label.textContent = status === 'online' ? 'Runtime API connected'
     : status === 'degraded' ? 'Some runtime data unavailable' : 'Runtime API unavailable';
+  document.getElementById('syncStatus').textContent = status === 'online'
+    ? 'Runtime connected' : status === 'degraded' ? 'Some data unavailable · showing last available values' : 'Connection lost · data may be out of date';
+  document.querySelector('.sync-status').dataset.status = status;
   dot.classList.toggle('live', status === 'online');
   dot.classList.toggle('offline', status !== 'online');
 }
@@ -168,20 +177,19 @@ function changePollInterval(val) {
 async function fetchDashboardData() {
   if (state.polling) return;
   state.polling = true;
+  document.getElementById('btnRefreshManual').disabled = true;
   try {
-    const [containersRes, imagesRes, statusRes, layersRes] = await Promise.all([
-      fetch('/api/containers'),
-      fetch('/api/images'),
-      fetch('/api/status'),
-      fetch('/api/layers')
-    ]);
-
-    if (containersRes.ok) state.containers = await containersRes.json();
-    if (imagesRes.ok) state.images = await imagesRes.json();
-    if (statusRes.ok) state.system = await statusRes.json();
-    if (layersRes.ok) state.layers = await layersRes.json();
-    setConnectionStatus([containersRes, imagesRes, statusRes, layersRes].every(res => res.ok) ? 'online' : 'degraded');
-
+    const resources = ['containers', 'images', 'status', 'layers'];
+    const results = await Promise.allSettled(resources.map(async resource => {
+      const response = await fetch(`/api/${resource}`, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw new Error(`${resource} unavailable`);
+      const data = await response.json();
+      state[resource === 'status' ? 'system' : resource] = resource === 'status' ? (data || {}) : (data || []);
+      state.loaded.add(resource);
+    }));
+    const successes = results.filter(result => result.status === 'fulfilled').length;
+    setConnectionStatus(successes === 4 ? 'online' : successes ? 'degraded' : 'offline');
+    document.getElementById('lastUpdated').textContent = `Last checked ${new Date().toLocaleTimeString()}`;
     updateKPICards();
     renderContainersTable();
     renderImagesTable();
@@ -194,6 +202,7 @@ async function fetchDashboardData() {
     setConnectionStatus('offline');
   } finally {
     state.polling = false;
+    document.getElementById('btnRefreshManual').disabled = false;
   }
 }
 
@@ -242,16 +251,20 @@ function updateKPICards() {
 function renderContainersTable() {
   const tbody = document.getElementById('containersTableBody');
   const filterInput = document.getElementById('filterContainersInput');
-  const showAll = document.getElementById('chkShowAll')?.checked ?? true;
+  const statusFilter = document.getElementById('containerStatusFilter').value;
   const countBadge = document.getElementById('containersCountBadge');
 
   if (!tbody) return;
 
+  if (!state.loaded.has('containers')) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><h3>Container data unavailable</h3><p>Check the runtime connection, then refresh to try again.</p><button class="btn btn-secondary" onclick="fetchDashboardData()">Retry connection</button></div></td></tr>';
+    return;
+  }
   const query = (filterInput?.value || '').toLowerCase().trim();
   let list = state.containers || [];
 
-  if (!showAll) {
-    list = list.filter(c => c.status === 'Running');
+  if (statusFilter !== 'all') {
+    list = list.filter(c => c.status === statusFilter);
   }
 
   if (query) {
@@ -269,13 +282,17 @@ function renderContainersTable() {
     tbody.innerHTML = `
       <tr>
         <td colspan="8" class="text-center py-8 text-muted">
-          ${query ? 'No containers match this search.' : 'No containers yet. Launch one from a local image.'}
+          <div class="empty-state"><span class="empty-symbol" aria-hidden="true">◇</span>
+          <h3>${query || statusFilter !== 'all' ? 'No matching containers' : 'No containers'}</h3>
+          <p>${query || statusFilter !== 'all' ? 'Try another search or reset your filters.' : 'Run a local image to create a container.'}</p>
+          <button class="btn btn-secondary" onclick="${query || statusFilter !== 'all' ? 'resetContainerFilters()' : 'openRunModal()'}">${query || statusFilter !== 'all' ? 'Reset filters' : 'New container'}</button></div>
         </td>
       </tr>
     `;
     return;
   }
 
+  const focusedAction = captureTableFocus(tbody);
   tbody.innerHTML = list.map(c => {
     const isRunning = c.status === 'Running';
     const statusClass = isRunning ? 'running' : (c.status === 'Stopped' ? 'stopped' : 'exited');
@@ -298,25 +315,25 @@ function renderContainersTable() {
 
     return `
       <tr id="row-${shortId}">
-        <td>
+        <td data-label="Status">
           <span class="status-badge ${statusClass}">
             <span class="status-dot ${isRunning ? 'live' : ''}"></span>
             ${c.status}
           </span>
         </td>
-        <td>
+        <td data-label="Name / ID">
           <div class="container-name-col">
             <span class="container-name">${escapeHtml(c.name)}</span>
             <span class="container-id">${shortId} (PID: ${c.pid || '-'})</span>
           </div>
         </td>
-        <td>
+        <td data-label="Image">
           <span class="image-tag-badge">${escapeHtml(c.image)}</span>
         </td>
-        <td>
+        <td data-label="IP address">
           <span class="font-mono text-xs">${c.ip_address ? escapeHtml(c.ip_address) : '<span class="text-dim">none</span>'}</span>
         </td>
-        <td>
+        <td data-label="Memory">
           <div class="resource-bar-wrapper">
             <div class="resource-bar-labels">
               <span>${memDisplay}</span>
@@ -328,13 +345,13 @@ function renderContainersTable() {
             ` : ''}
           </div>
         </td>
-        <td>
+        <td data-label="CPU">
           <span class="font-mono text-xs">${cpuDisplay}</span>
         </td>
-        <td>
+        <td data-label="Created">
           <span class="text-dim text-xs">${createdStr}</span>
         </td>
-        <td class="text-right">
+        <td data-label="Actions" class="text-right">
           <div class="table-actions">
             <button class="btn-xs" data-action="logs" data-id="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" aria-label="View logs for ${escapeHtml(c.name)}">Logs</button>
             ${isRunning ? `
@@ -347,6 +364,7 @@ function renderContainersTable() {
       </tr>
     `;
   }).join('');
+  restoreTableFocus(tbody, focusedAction);
 }
 
 /**
@@ -357,6 +375,10 @@ function renderImagesTable() {
   const countBadge = document.getElementById('imagesCountBadge');
   if (!tbody) return;
 
+  if (!state.loaded.has('images')) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>Image data unavailable</h3><p>Check the runtime connection, then refresh to try again.</p><button class="btn btn-secondary" onclick="fetchDashboardData()">Retry connection</button></div></td></tr>';
+    return;
+  }
   const query = document.getElementById('filterImagesInput')?.value.toLowerCase().trim() || '';
   const images = (state.images || []).filter(img => !query ||
     [img.repository, img.tag, img.id].some(value => String(value || '').toLowerCase().includes(query)));
@@ -366,13 +388,17 @@ function renderImagesTable() {
     tbody.innerHTML = `
       <tr>
         <td colspan="7" class="text-center py-8 text-muted">
-          ${query ? 'No images match this search.' : 'No local images yet. Pull one to get started.'}
+          <div class="empty-state"><span class="empty-symbol" aria-hidden="true">▱</span>
+          <h3>${query ? 'No matching images' : 'No local images'}</h3>
+          <p>${query ? 'Try a different repository, tag or image ID.' : 'Pull an image to get started.'}</p>
+          ${query ? '' : '<button class="btn btn-secondary" onclick="openPullModal()">Pull image</button>'}</div>
         </td>
       </tr>
     `;
     return;
   }
 
+  const focusedAction = captureTableFocus(tbody);
   tbody.innerHTML = images.map(img => {
     const sizeMB = (img.size / (1024 * 1024)).toFixed(2);
     const layersCount = img.layers ? img.layers.length : 1;
@@ -380,13 +406,13 @@ function renderImagesTable() {
 
     return `
       <tr>
-        <td><strong>${escapeHtml(img.repository)}</strong></td>
-        <td><span class="image-tag-badge">${escapeHtml(img.tag || 'latest')}</span></td>
-        <td><span class="font-mono text-xs text-dim">${escapeHtml(img.id || '-')}</span></td>
-        <td><span class="font-mono text-xs">${sizeMB} MB</span></td>
-        <td><span class="font-mono text-xs">${layersCount} layers</span></td>
-        <td><span class="text-dim text-xs">${createdStr}</span></td>
-        <td class="text-right">
+        <td data-label="Repository"><strong>${escapeHtml(img.repository)}</strong></td>
+        <td data-label="Tag"><span class="image-tag-badge">${escapeHtml(img.tag || 'latest')}</span></td>
+        <td data-label="Image ID"><span class="font-mono text-xs text-dim">${escapeHtml(img.id || '-')}</span></td>
+        <td data-label="Size"><span class="font-mono text-xs">${sizeMB} MB</span></td>
+        <td data-label="Layers"><span class="font-mono text-xs">${layersCount} layers</span></td>
+        <td data-label="Created"><span class="text-dim text-xs">${createdStr}</span></td>
+        <td data-label="Actions" class="text-right">
           <div class="table-actions">
             <button class="btn-xs" data-action="run" data-image="${escapeHtml(img.repository)}">Run</button>
             <button class="btn-xs btn-action-rm" data-action="delete" data-image="${escapeHtml(img.repository)}">Delete</button>
@@ -395,6 +421,7 @@ function renderImagesTable() {
       </tr>
     `;
   }).join('');
+  restoreTableFocus(tbody, focusedAction);
 }
 
 /**
@@ -524,6 +551,13 @@ async function removeContainer(id) {
 
 async function handleRunSubmit(e) {
   e.preventDefault();
+  if (state.running) return;
+  const submit = document.getElementById('btnSubmitRun');
+  const error = document.getElementById('runError');
+  error.hidden = true;
+  state.running = true;
+  submit.disabled = true;
+  submit.textContent = 'Launching…';
   const image = document.getElementById('runImageSelect').value.trim();
   const name = document.getElementById('runNameInput').value.trim();
   const cmd = document.getElementById('runCommandInput').value.trim();
@@ -537,7 +571,6 @@ async function handleRunSubmit(e) {
   const command = cmd ? cmd.split(' ') : [];
 
   showToast(`Launching container from ${image}...`, 'info');
-  closeRunModal();
 
   try {
     const res = await fetch('/api/containers/run', {
@@ -557,14 +590,22 @@ async function handleRunSubmit(e) {
 
     if (res.ok) {
       const data = await res.json();
+      closeRunModal();
+      switchTab('containers');
       showToast(`Launch requested: ${data.id?.substring(0, 12) || 'check the container list'}`, 'success');
       fetchDashboardData();
     } else {
       const err = await res.text();
-      showToast(`Launch failed: ${err}`, 'error');
+      error.textContent = `Launch failed: ${err}`;
+      error.hidden = false;
     }
   } catch (err) {
-    showToast(`Network error launching container`, 'error');
+    error.textContent = 'Could not reach the runtime. Your settings are saved here; check the connection before retrying.';
+    error.hidden = false;
+  } finally {
+    state.running = false;
+    submit.disabled = false;
+    submit.textContent = 'Launch container';
   }
 }
 
@@ -573,8 +614,11 @@ async function handleRunSubmit(e) {
  */
 async function handlePullSubmit(e) {
   e.preventDefault();
+  if (state.pulling) return;
   const imgRef = document.getElementById('pullImageInput').value.trim();
   if (!imgRef) return;
+  state.pulling = true;
+  document.getElementById('pullSpinner').hidden = false;
 
   const progressPanel = document.getElementById('pullProgressPanel');
   const progressText = document.getElementById('pullProgressText');
@@ -598,16 +642,20 @@ async function handlePullSubmit(e) {
       if (progressOutput) progressOutput.textContent += `\nSuccess! Pulled image: ${imgRef}`;
       showToast(`Image ${imgRef} pulled successfully!`, 'success');
       fetchDashboardData();
-      setTimeout(closePullModal, 1500);
+      progressText.textContent = 'Image ready to use';
     } else {
       const err = await res.text();
       if (progressOutput) progressOutput.textContent += `\nError: ${err}`;
+      progressText.textContent = 'Pull failed · review the error below';
       showToast(`Pull failed: ${err}`, 'error');
     }
   } catch (err) {
     if (progressOutput) progressOutput.textContent += `\nNetwork error during pull`;
+    progressText.textContent = 'Connection lost · try again';
     showToast(`Pull failed: network error`, 'error');
   } finally {
+    state.pulling = false;
+    document.getElementById('pullSpinner').hidden = true;
     if (submitBtn) submitBtn.disabled = false;
   }
 }
@@ -636,6 +684,14 @@ async function removeImage(imageName) {
  * Dockerfile Builder Trigger
  */
 async function triggerBuild() {
+  if (state.building) return;
+  for (const id of ['buildTargetTag', 'buildContextDir']) {
+    if (!document.getElementById(id).reportValidity()) return;
+  }
+  state.building = true;
+  const buildButton = document.getElementById('btnTriggerBuild');
+  buildButton.disabled = true;
+  buildButton.textContent = 'Building…';
   const tag = document.getElementById('buildTargetTag').value.trim();
   const contextDir = document.getElementById('buildContextDir').value.trim();
   const instructions = document.getElementById('buildDockerfileEditor').value;
@@ -674,6 +730,10 @@ async function triggerBuild() {
   } catch (err) {
     if (consoleEl) consoleEl.textContent += `\nNetwork error triggering build.`;
     showToast(`Build error`, 'error');
+  } finally {
+    state.building = false;
+    buildButton.disabled = false;
+    buildButton.textContent = 'Build image';
   }
 }
 
@@ -687,6 +747,7 @@ function clearBuildLogs() {
  */
 async function openLogsModal(containerId, name) {
   state.activeLogContainerId = containerId;
+  document.getElementById('logsContent').textContent = 'Loading logs…';
   const modal = document.getElementById('logsModal');
   const title = document.getElementById('logsModalTitle');
   const subtitle = document.getElementById('logsModalSubtitle');
@@ -703,10 +764,12 @@ async function openLogsModal(containerId, name) {
 async function fetchActiveLogs() {
   if (!state.activeLogContainerId) return;
   const terminal = document.getElementById('logsContent');
+  const requestedId = state.activeLogContainerId;
   try {
     const res = await fetch(`/api/containers/logs?id=${state.activeLogContainerId}`);
     if (res.ok) {
       const text = await res.text();
+      if (state.activeLogContainerId !== requestedId) return;
       if (terminal) {
         terminal.textContent = text || '(Log is currently empty - container may not have produced output)';
       }
@@ -737,7 +800,7 @@ function closeRunModal() {
 function openPullModal() {
   showDialog(document.getElementById('pullModal'), '#pullImageInput');
   const panel = document.getElementById('pullProgressPanel');
-  if (panel) panel.style.display = 'none';
+  if (panel && !state.pulling) panel.style.display = 'none';
 }
 function closePullModal() {
   hideDialog(document.getElementById('pullModal'));
@@ -746,6 +809,7 @@ function closePullModal() {
 function showDialog(modal, focusSelector) {
   if (!modal) return;
   state.lastTrigger = document.activeElement;
+  document.querySelector('.app-layout').inert = true;
   modal.inert = false;
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
@@ -758,7 +822,10 @@ function hideDialog(modal) {
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
   modal.inert = true;
-  if (!document.querySelector('.modal-backdrop.open')) document.body.classList.remove('dialog-open');
+  if (!document.querySelector('.modal-backdrop.open')) {
+    document.body.classList.remove('dialog-open');
+    document.querySelector('.app-layout').inert = false;
+  }
   if (state.lastTrigger?.isConnected) state.lastTrigger.focus();
 }
 
@@ -781,7 +848,7 @@ function setupDialogs() {
       if (modal.id === 'logsModal') closeLogsModal();
     }
     if (event.key !== 'Tab') return;
-    const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]')];
+    const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], summary')].filter(element => element.getClientRects().length > 0);
     if (!focusable.length) return;
     if (event.shiftKey && document.activeElement === focusable[0]) {
       event.preventDefault(); focusable[focusable.length - 1].focus();
@@ -800,6 +867,13 @@ function launchFromImage(imageRef) {
   if (input) input.value = imageRef;
 }
 
+function resetContainerFilters() {
+  document.getElementById('filterContainersInput').value = '';
+  document.getElementById('containerStatusFilter').value = 'all';
+  renderContainersTable();
+  document.getElementById('filterContainersInput').focus();
+}
+
 function switchTab(tabName) {
   state.activeTab = tabName;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -808,24 +882,30 @@ function switchTab(tabName) {
   if (tabName === 'containers') {
     document.getElementById('tabBtnContainers')?.classList.add('active');
     document.getElementById('viewContainers')?.classList.add('active');
-    document.getElementById('pageTitle').textContent = 'Container Dashboard';
+    document.getElementById('pageTitle').textContent = 'Containers';
   } else if (tabName === 'images') {
     document.getElementById('tabBtnImages')?.classList.add('active');
     document.getElementById('viewImages')?.classList.add('active');
-    document.getElementById('pageTitle').textContent = 'OCI Images & Layer Store';
+    document.getElementById('pageTitle').textContent = 'Images';
   } else if (tabName === 'builder') {
     document.getElementById('tabBtnBuilder')?.classList.add('active');
     document.getElementById('viewBuilder')?.classList.add('active');
-    document.getElementById('pageTitle').textContent = 'Dockerfile Builder';
+    document.getElementById('pageTitle').textContent = 'Image builder';
   } else if (tabName === 'network') {
     document.getElementById('tabBtnNetwork')?.classList.add('active');
     document.getElementById('viewNetwork')?.classList.add('active');
-    document.getElementById('pageTitle').textContent = 'Kernel & Virtual Network';
+    document.getElementById('pageTitle').textContent = 'Network';
   } else if (tabName === 'docs') {
     document.getElementById('tabBtnDocs')?.classList.add('active');
     document.getElementById('viewDocs')?.classList.add('active');
-    document.getElementById('pageTitle').textContent = 'Documentation & Installation Guide';
+    document.getElementById('pageTitle').textContent = 'Documentation';
   }
+  document.querySelectorAll('.nav-item').forEach(button => {
+    if (button.classList.contains('active')) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  document.querySelector('.kpi-grid').hidden = !['containers', 'images', 'network'].includes(tabName);
+  document.querySelector('.page-subtitle').textContent = tabCopy[tabName][state.mode][1];
   updateContext();
 }
 
@@ -890,4 +970,16 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Keep keyboard users on the same action while live data refreshes.
+function captureTableFocus(table) {
+  const active = document.activeElement;
+  return table.contains(active) && active.matches('button[data-action]') ? { ...active.dataset } : null;
+}
+function restoreTableFocus(table, previous) {
+  if (!previous) return;
+  const button = [...table.querySelectorAll('button[data-action]')].find(button =>
+    Object.keys(previous).every(key => button.dataset[key] === previous[key]));
+  (button || table.closest('.table-responsive')).focus({ preventScroll: true });
 }
