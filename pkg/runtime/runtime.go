@@ -100,6 +100,7 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		PidsLimit:   flags.PidsLimit,
 		RootfsPath:  mergedDir,
 		WorkingDir:  workDir,
+		Ports:       flags.Ports,
 		Volumes:     flags.Volumes,
 		Env:         mergedEnv,
 	}
@@ -121,7 +122,17 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 			syscall.CLONE_NEWNS |
 			syscall.CLONE_NEWIPC |
 			syscall.CLONE_NEWNET,
+		Setsid: flags.Detach,
 	}
+
+	syncR, syncW, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("failed to create sync pipe: %w", err)
+	}
+	defer syncR.Close()
+	defer syncW.Close()
+
+	cmd.ExtraFiles = []*os.File{syncR}
 
 	var logFile *os.File
 	if flags.Detach {
@@ -167,11 +178,21 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	// 8. Configure Virtual Networking
 	if flags.Network != "none" {
 		ipAddr, err := network.SetupContainerNetwork(containerID, pid)
-		if err == nil {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: network setup error: %v\n", err)
+		} else {
 			state.IPAddress = ipAddr
+			if len(flags.Ports) > 0 {
+				_ = network.SetupPortForwarding(ipAddr, flags.Ports)
+			}
+			_ = network.SyncAllContainerHosts()
 		}
 	}
 	saveState(containerID, state)
+
+	// 9. Notify child that namespaces, cgroups, and network configuration are ready
+	_, _ = syncW.Write([]byte{1})
+	_ = syncW.Close()
 
 	if flags.Detach {
 		fmt.Printf("%s\n", containerID)
@@ -189,6 +210,9 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	saveState(containerID, state)
 
 	// Clean up resources
+	if len(state.Ports) > 0 && state.IPAddress != "" {
+		network.CleanupPortForwarding(state.IPAddress, state.Ports)
+	}
 	network.CleanupContainerNetwork(containerID)
 	_ = cg.Destroy()
 
@@ -203,6 +227,14 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 // Child executes inside the newly unshared Linux Namespaces.
 // It performs pivot_root, mounts /proc, sets hostname, and replaces itself with the user binary.
 func Child(containerID string, userCommand []string) error {
+	// 0. Synchronize with host parent: wait until host has fully configured netns and cgroups
+	syncPipe := os.NewFile(3, "sync_pipe")
+	if syncPipe != nil {
+		buf := make([]byte, 1)
+		_, _ = syncPipe.Read(buf)
+		_ = syncPipe.Close()
+	}
+
 	mergedDir := config.GetContainerMergedDir(containerID)
 
 	// 1. Set container hostname (CLONE_NEWUTS)
@@ -218,6 +250,16 @@ func Child(containerID string, userCommand []string) error {
 	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	os.Setenv("HOME", "/root")
 	os.Setenv("TERM", "xterm")
+
+	// Ensure essential networking files exist in container rootfs before pivot_root
+	etcDir := filepath.Join(mergedDir, "etc")
+	_ = os.MkdirAll(etcDir, 0755)
+	resolvConf := filepath.Join(etcDir, "resolv.conf")
+	_ = os.WriteFile(resolvConf, []byte("nameserver 8.8.8.8\nnameserver 1.1.1.1\noptions timeout:2 attempts:3\n"), 0644)
+	hostsPath := filepath.Join(etcDir, "hosts")
+	if _, err := os.Stat(hostsPath); os.IsNotExist(err) {
+		_ = os.WriteFile(hostsPath, []byte(fmt.Sprintf("127.0.0.1 localhost\n::1 localhost\n127.0.0.1 %s\n", hostname)), 0644)
+	}
 
 	// 3. Load container state for volume bind mounts & custom envs
 	state, _ := loadState(containerID)
@@ -235,7 +277,12 @@ func Child(containerID string, userCommand []string) error {
 		}
 	}
 
-	// 4. Perform pivot_root to isolate filesystem (CLONE_NEWNS)
+	// 4. Setup /dev devices inside mergedDir before pivot_root
+	if err := rootfs.SetupDevNodes(mergedDir); err != nil {
+		return fmt.Errorf("failed to setup dev nodes: %w", err)
+	}
+
+	// 5. Perform pivot_root to isolate filesystem (CLONE_NEWNS)
 	if err := rootfs.PivotRoot(mergedDir); err != nil {
 		return fmt.Errorf("pivot_root failed: %w", err)
 	}
@@ -375,6 +422,9 @@ func Stop(containerID string) error {
 	state.Status = config.StatusStopped
 	saveState(state.ID, state)
 
+	if len(state.Ports) > 0 && state.IPAddress != "" {
+		network.CleanupPortForwarding(state.IPAddress, state.Ports)
+	}
 	network.CleanupContainerNetwork(state.ID)
 	cg := cgroup.NewManager(state.ID)
 	_ = cg.Destroy()
@@ -398,6 +448,9 @@ func RM(containerID string, force bool) error {
 		_ = Stop(state.ID)
 	}
 
+	if len(state.Ports) > 0 && state.IPAddress != "" {
+		network.CleanupPortForwarding(state.IPAddress, state.Ports)
+	}
 	_ = rootfs.UnmountOverlay(state.ID)
 	_ = os.RemoveAll(config.GetContainerDir(state.ID))
 	_ = cgroup.NewManager(state.ID).Destroy()
@@ -442,6 +495,7 @@ func Exec(containerID string, command []string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), state.Env...)
 
 	return cmd.Run()
 }

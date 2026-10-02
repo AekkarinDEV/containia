@@ -122,7 +122,39 @@ func PivotRoot(newRoot string) error {
 	return nil
 }
 
-// MountEssentialFilesystems mounts /proc, /sys, and standard dev nodes inside the container.
+// SetupDevNodes binds essential character devices into the container merged /dev directory before pivot_root.
+func SetupDevNodes(mergedDir string) error {
+	devDir := filepath.Join(mergedDir, "dev")
+	if err := os.MkdirAll(devDir, 0755); err != nil {
+		return err
+	}
+
+	nodes := []string{"null", "zero", "full", "random", "urandom", "tty"}
+	for _, n := range nodes {
+		hostNode := "/dev/" + n
+		targetNode := filepath.Join(devDir, n)
+
+		if _, err := os.Stat(hostNode); err == nil {
+			if _, err := os.Stat(targetNode); os.IsNotExist(err) {
+				f, err := os.OpenFile(targetNode, os.O_CREATE|os.O_WRONLY, 0666)
+				if err == nil {
+					f.Close()
+				}
+			}
+			_ = unix.Mount(hostNode, targetNode, "bind", unix.MS_BIND, "")
+		}
+	}
+
+	// Symlinks
+	_ = os.Symlink("/proc/self/fd", filepath.Join(devDir, "fd"))
+	_ = os.Symlink("/proc/self/fd/0", filepath.Join(devDir, "stdin"))
+	_ = os.Symlink("/proc/self/fd/1", filepath.Join(devDir, "stdout"))
+	_ = os.Symlink("/proc/self/fd/2", filepath.Join(devDir, "stderr"))
+
+	return nil
+}
+
+// MountEssentialFilesystems mounts /proc, /sys, /dev/shm, and /dev/pts inside the container.
 func MountEssentialFilesystems() error {
 	// 1. Mount /proc for process isolation
 	if err := os.MkdirAll("/proc", 0755); err != nil {
@@ -137,6 +169,14 @@ func MountEssentialFilesystems() error {
 		return err
 	}
 	_ = unix.Mount("sysfs", "/sys", "sysfs", unix.MS_RDONLY, "")
+
+	// 3. Mount /dev/shm (POSIX shared memory)
+	_ = os.MkdirAll("/dev/shm", 0777)
+	_ = unix.Mount("tmpfs", "/dev/shm", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=1777")
+
+	// 4. Mount /dev/pts
+	_ = os.MkdirAll("/dev/pts", 0755)
+	_ = unix.Mount("devpts", "/dev/pts", "devpts", unix.MS_NOSUID|unix.MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620")
 
 	return nil
 }
@@ -153,8 +193,24 @@ func BindMountVolumes(mergedDir string, volumes []string) error {
 		containerRel := strings.TrimPrefix(parts[1], "/")
 		targetPath := filepath.Join(mergedDir, containerRel)
 
-		if err := os.MkdirAll(targetPath, 0755); err != nil {
-			return fmt.Errorf("failed to create mount point %s: %w", targetPath, err)
+		fi, err := os.Stat(hostPath)
+		if err != nil {
+			return fmt.Errorf("volume source %s not found: %w", hostPath, err)
+		}
+
+		if fi.IsDir() {
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("failed to create mount point dir %s: %w", targetPath, err)
+			}
+		} else {
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("failed to create parent dir for %s: %w", targetPath, err)
+			}
+			f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to create mount point file %s: %w", targetPath, err)
+			}
+			f.Close()
 		}
 
 		if err := unix.Mount(hostPath, targetPath, "bind", unix.MS_BIND|unix.MS_REC, ""); err != nil {

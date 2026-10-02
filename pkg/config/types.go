@@ -28,6 +28,7 @@ type ContainerState struct {
 	CPUShares   string          `json:"cpu_shares"`   // e.g. "50000 100000"
 	PidsLimit   int64           `json:"pids_limit"`   // Max number of processes
 	IPAddress   string          `json:"ip_address,omitempty"`
+	Ports       []string        `json:"ports,omitempty"`
 	RootfsPath  string          `json:"rootfs_path"`
 	WorkingDir  string          `json:"working_dir,omitempty"`
 	Volumes     []string        `json:"volumes,omitempty"`
@@ -46,6 +47,7 @@ type RunFlags struct {
 	Remove      bool
 	Network     string // "bridge", "none"
 	WorkingDir  string
+	Ports       []string // e.g. ["8000:8000", "3000:3000"]
 	Env         []string
 	Volumes     []string
 }

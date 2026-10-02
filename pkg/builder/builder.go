@@ -208,16 +208,29 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return err
 	}
 
-	out, err := os.Create(dst)
+	mode := info.Mode()
+	if strings.Contains(src, "bin") || mode&0111 != 0 {
+		mode = mode | 0755
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, in)
-	return err
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+
+	return os.Chmod(dst, mode)
 }

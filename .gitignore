@@ -1,7 +1,4 @@
-# Binaries
-containia
-*.exe
-*.test
+
 
 # OS & temporary files
 *.tmp
