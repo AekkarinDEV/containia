@@ -212,4 +212,17 @@ All core container subsystems have been fully implemented and verified under Lin
   - **Hairpin NAT & Port Forwarding (`-p`):** Configured iptables DNAT prerouting and localhost output rules paired with postrouting masquerade, allowing seamless port forwarding from host to container IPs.
   - **Inter-Container Service Discovery:** Automated `/etc/hosts` synchronization across active containers enables direct hostname resolution (`test-backend` connects directly to `test-db:5432`).
   - **Automated Verification Script:** `test/integration_test.sh` executes dependency preparation, image compilation, port forwarding, and end-to-end HTTP/TCP health assertions with 100% pass rate.
+- [x] **Phase 9: OS Kernel Lab & Primitives Visualizer (Educational Suite):**
+  - **Dual-PID & Namespace Inspector:** Side-by-side comparison of Host PID vs Container PID 1, Linux Kernel `/proc/<pid>/status` `NSpid` readout, and real-time comparison of namespace inode numbers (`/proc/<pid>/ns/*` vs `/proc/self/ns/*`).
+  - **Cgroups v2 Chaos & Stress Lab:** Interactive in-browser kernel experiments:
+    - *Fork-Bomb Defense:* Spawns 200 tasks to prove `pids.max` EAGAIN block protecting host OS.
+    - *Kernel OOM Killer:* Triggers memory allocator, verifying increment in `/sys/fs/cgroup/.../memory.events` (`oom_kill`).
+    - *CFS CPU Quota Throttling:* Generates arithmetic load, recording `throttled_usec` delta in `cpu.stat`.
+    - *Copy-on-Write (CoW) Inode Test:* Writes inside container, displaying file created in `upperdir` while base `lowerdir` remains bit-for-bit pristine.
+  - **OverlayFS 3D Stack Exploder:** Visual breakdown of Merged rootfs, ephemeral Writable `upperdir`, Workdir, and ordered read-only `lowerdir` layers with file inspection.
+  - **Packet Traversal Pipeline:** Visual interactive data flow through container `eth0`, virtual ethernet `veth` pair, `containia0` bridge, and iptables NAT Masquerade / DNAT port forwardings.
+- [x] **Phase 10: Codebase Cleanliness & Natural Human Style Refactoring:**
+  - Removed all excessive textbook docstrings, step-by-step instructional comments, and AI-generated boilerplate across both Go backend (`pkg/`, `cmd/`) and Frontend web monitor (`app.js`, `app.css`, `index.html`).
+  - Preserved essential Go compiler directives (`//go:embed assets/*`).
+  - Verified static binary compilation (`GOOS=linux go build`) and runtime syntax integrity with zero warnings or errors.
 

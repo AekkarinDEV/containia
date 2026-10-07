@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// ContainerStatus represents the current lifecycle state of a container.
 type ContainerStatus string
 
 const (
@@ -14,7 +13,6 @@ const (
 	StatusStopped ContainerStatus = "Stopped"
 )
 
-// ContainerState holds runtime information about a container.
 type ContainerState struct {
 	ID          string          `json:"id"`
 	Name        string          `json:"name"`
@@ -24,9 +22,9 @@ type ContainerState struct {
 	Status      ContainerStatus `json:"status"`
 	ExitCode    int             `json:"exit_code"`
 	CreatedAt   time.Time       `json:"created_at"`
-	MemoryLimit int64           `json:"memory_limit"` // In bytes, 0 for unlimited
-	CPUShares   string          `json:"cpu_shares"`   // e.g. "50000 100000"
-	PidsLimit   int64           `json:"pids_limit"`   // Max number of processes
+	MemoryLimit int64           `json:"memory_limit"`
+	CPUShares   string          `json:"cpu_shares"`
+	PidsLimit   int64           `json:"pids_limit"`
 	IPAddress   string          `json:"ip_address,omitempty"`
 	Ports       []string        `json:"ports,omitempty"`
 	RootfsPath  string          `json:"rootfs_path"`
@@ -35,24 +33,22 @@ type ContainerState struct {
 	Env         []string        `json:"env,omitempty"`
 }
 
-// RunFlags defines the CLI flags for 'containia run'.
 type RunFlags struct {
 	Name        string
-	Memory      string // e.g. "128m", "1g"
-	CPUs        string // e.g. "0.5", "1"
+	Memory      string
+	CPUs        string
 	PidsLimit   int64
 	Interactive bool
 	Tty         bool
 	Detach      bool
 	Remove      bool
-	Network     string // "bridge", "none"
+	Network     string
 	WorkingDir  string
-	Ports       []string // e.g. ["8000:8000", "3000:3000"]
+	Ports       []string
 	Env         []string
 	Volumes     []string
 }
 
-// ImageConfigDef holds configuration such as Env, Cmd, Entrypoint, etc.
 type ImageConfigDef struct {
 	Env          []string               `json:"Env,omitempty"`
 	Cmd          []string               `json:"Cmd,omitempty"`
@@ -62,20 +58,18 @@ type ImageConfigDef struct {
 	User         string                 `json:"User,omitempty"`
 }
 
-// ImageConfigFile represents the OCI/Docker image config JSON blob.
 type ImageConfigFile struct {
 	Architecture string         `json:"architecture,omitempty"`
 	OS           string         `json:"os,omitempty"`
 	Config       ImageConfigDef `json:"config"`
 }
 
-// ImageMetadata stores full metadata of a locally stored image.
 type ImageMetadata struct {
 	Name         string         `json:"name"`
 	Tag          string         `json:"tag"`
-	ID           string         `json:"id"`            // short config digest or unique ID
-	ConfigDigest string         `json:"config_digest"` // e.g. sha256:...
-	Layers       []string       `json:"layers"`        // layer digests from bottom to top
+	ID           string         `json:"id"`
+	ConfigDigest string         `json:"config_digest"`
+	Layers       []string       `json:"layers"`
 	Config       ImageConfigDef `json:"config"`
 	Size         int64          `json:"size"`
 	CreatedAt    time.Time      `json:"created_at"`

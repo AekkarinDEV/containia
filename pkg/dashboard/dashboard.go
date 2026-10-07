@@ -23,12 +23,10 @@ import (
 //go:embed assets/*
 var assetsFS embed.FS
 
-// Server represents the dashboard HTTP server.
 type Server struct {
 	Port int
 }
 
-// NewServer creates a new dashboard server.
 func NewServer(port int) *Server {
 	if port <= 0 {
 		port = 8080
@@ -36,7 +34,6 @@ func NewServer(port int) *Server {
 	return &Server{Port: port}
 }
 
-// ContainerView represents a container enriched with live cgroup statistics.
 type ContainerView struct {
 	config.ContainerState
 	Stats CgroupLiveStats `json:"stats"`
@@ -49,11 +46,9 @@ type CgroupLiveStats struct {
 	PidsMax       int64 `json:"pids_max"`
 }
 
-// Start launches the HTTP server and blocks.
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
-	// 1. Static asset handler
 	assetsSub, err := fs.Sub(assetsFS, "assets")
 	if err != nil {
 		return fmt.Errorf("failed to load embedded assets: %w", err)
@@ -62,7 +57,6 @@ func (s *Server) Start() error {
 	fileServer := http.FileServer(http.FS(assetsSub))
 	mux.Handle("/assets/", http.StripPrefix("/assets/", fileServer))
 
-	// Serve index.html at root
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -78,7 +72,6 @@ func (s *Server) Start() error {
 		_, _ = io.Copy(w, data)
 	})
 
-	// 2. REST API endpoints
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/containers", s.handleContainers)
 	mux.HandleFunc("/api/containers/run", s.handleContainerRun)
@@ -89,6 +82,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/images/pull", s.handleImagePull)
 	mux.HandleFunc("/api/layers", s.handleLayers)
 	mux.HandleFunc("/api/build", s.handleBuild)
+
+	s.registerOSRoutes(mux)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", s.Port)
 	fmt.Printf("\n🚀 Containia Monitor GUI started at http://localhost:%d\n", s.Port)
@@ -135,16 +130,13 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Verify process state
 		if st.Status == config.StatusRunning && st.PID > 0 {
 			if err := syscall.Kill(st.PID, 0); err != nil {
 				st.Status = config.StatusExited
 			}
 		}
 
-		// Read live cgroup metrics
 		stats := readCgroupStats(cid)
-
 		results = append(results, ContainerView{
 			ContainerState: st,
 			Stats:          stats,
@@ -253,7 +245,6 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	logPath := config.GetContainerLogPath(cid)
 	content, err := os.ReadFile(logPath)
 	if err != nil {
-		// Also search prefix
 		containersDir := config.GetContainersDir()
 		if entries, e := os.ReadDir(containersDir); e == nil {
 			for _, entry := range entries {
@@ -388,7 +379,6 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 		req.ContextDir = "."
 	}
 
-	// If custom dockerfile content provided, write to a temp file
 	dockerfilePath := filepath.Join(req.ContextDir, "Dockerfile")
 	if req.DockerfileContent != "" {
 		tmpDir, err := os.MkdirTemp("", "containia-build-*")
@@ -419,19 +409,15 @@ func readCgroupStats(cid string) CgroupLiveStats {
 	var stats CgroupLiveStats
 	cgPath := config.GetContainerCgroupPath(cid)
 
-	// memory.current
 	if data, err := os.ReadFile(filepath.Join(cgPath, "memory.current")); err == nil {
 		stats.MemoryCurrent, _ = strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	}
-	// memory.max
 	if data, err := os.ReadFile(filepath.Join(cgPath, "memory.max")); err == nil {
 		stats.MemoryMax, _ = strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	}
-	// pids.current
 	if data, err := os.ReadFile(filepath.Join(cgPath, "pids.current")); err == nil {
 		stats.PidsCurrent, _ = strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	}
-	// pids.max
 	if data, err := os.ReadFile(filepath.Join(cgPath, "pids.max")); err == nil {
 		stats.PidsMax, _ = strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	}

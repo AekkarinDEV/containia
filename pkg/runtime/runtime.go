@@ -22,9 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Run launches a container based on the provided flags, image, and command.
 func Run(flags config.RunFlags, imageName string, command []string) error {
-	// 1. Ensure image is available locally; pull if missing
 	if !image.Exists(imageName) {
 		fmt.Printf("Image '%s' not found locally. Pulling...\n", imageName)
 		if err := image.Pull(imageName); err != nil {
@@ -32,7 +30,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		}
 	}
 
-	// Load image metadata if available to supply defaults
 	imgMeta, _ := image.LoadMetadata(imageName)
 	if len(command) == 0 && imgMeta != nil {
 		if len(imgMeta.Config.Entrypoint) > 0 {
@@ -46,20 +43,17 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		command = []string{"/bin/sh"}
 	}
 
-	// Determine working directory
 	workDir := flags.WorkingDir
 	if workDir == "" && imgMeta != nil {
 		workDir = imgMeta.Config.WorkingDir
 	}
 
-	// Merge environment variables: image defaults + user flags
 	var mergedEnv []string
 	if imgMeta != nil {
 		mergedEnv = append(mergedEnv, imgMeta.Config.Env...)
 	}
 	mergedEnv = append(mergedEnv, flags.Env...)
 
-	// 2. Generate container ID and name
 	containerID := generateID()
 	containerName := flags.Name
 	if containerName == "" {
@@ -71,13 +65,11 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		return fmt.Errorf("failed to create container dir: %w", err)
 	}
 
-	// 3. Setup OverlayFS
 	mergedDir, err := rootfs.SetupOverlay(containerID, imageName)
 	if err != nil {
 		return fmt.Errorf("overlayfs setup failed: %w", err)
 	}
 
-	// 4. Setup Cgroups v2
 	cg := cgroup.NewManager(containerID)
 	if err := cg.Initialize(); err != nil {
 		fmt.Printf("Warning: Cgroup init warning: %v\n", err)
@@ -87,7 +79,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	cpuQuota, _ := cgroup.ParseCPULimit(flags.CPUs)
 	_ = cg.ApplyLimits(memBytes, cpuQuota, flags.PidsLimit)
 
-	// Save preliminary state
 	state := &config.ContainerState{
 		ID:          containerID,
 		Name:        containerName,
@@ -106,7 +97,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	}
 	saveState(containerID, state)
 
-	// 5. Fork-Exec via Self-Re-exec pattern with Linux Namespaces
 	selfPath, err := os.Executable()
 	if err != nil {
 		selfPath = "/proc/self/exe"
@@ -115,7 +105,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	childArgs := append([]string{"child", containerID}, command...)
 	cmd := exec.Command(selfPath, childArgs...)
 
-	// Configure namespace isolation flags
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS |
 			syscall.CLONE_NEWPID |
@@ -136,7 +125,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 
 	var logFile *os.File
 	if flags.Detach {
-		// In detached mode, redirect outputs to container log file
 		logPath := config.GetContainerLogPath(containerID)
 		logFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
@@ -146,13 +134,11 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		cmd.Stdout = logFile
 		cmd.Stderr = logFile
 	} else {
-		// Interactive / Foreground mode
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
 
-	// Set container environmental flags
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("CONTAINIA_ID=%s", containerID),
 		fmt.Sprintf("CONTAINIA_IMAGE=%s", imageName),
@@ -161,7 +147,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		cmd.Env = append(cmd.Env, env)
 	}
 
-	// 6. Start the container process
 	if err := cmd.Start(); err != nil {
 		_ = rootfs.UnmountOverlay(containerID)
 		_ = cg.Destroy()
@@ -172,10 +157,8 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	state.PID = pid
 	state.Status = config.StatusRunning
 
-	// 7. Attach process to cgroups
 	_ = cg.AddProcess(pid)
 
-	// 8. Configure Virtual Networking
 	if flags.Network != "none" {
 		ipAddr, err := network.SetupContainerNetwork(containerID, pid)
 		if err != nil {
@@ -190,7 +173,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	}
 	saveState(containerID, state)
 
-	// 9. Notify child that namespaces, cgroups, and network configuration are ready
 	_, _ = syncW.Write([]byte{1})
 	_ = syncW.Close()
 
@@ -199,7 +181,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		return nil
 	}
 
-	// 9. Wait for process completion in foreground mode
 	waitErr := cmd.Wait()
 	state.Status = config.StatusExited
 	if waitErr != nil {
@@ -209,7 +190,6 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	}
 	saveState(containerID, state)
 
-	// Clean up resources
 	if len(state.Ports) > 0 && state.IPAddress != "" {
 		network.CleanupPortForwarding(state.IPAddress, state.Ports)
 	}
@@ -224,10 +204,7 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	return waitErr
 }
 
-// Child executes inside the newly unshared Linux Namespaces.
-// It performs pivot_root, mounts /proc, sets hostname, and replaces itself with the user binary.
 func Child(containerID string, userCommand []string) error {
-	// 0. Synchronize with host parent: wait until host has fully configured netns and cgroups
 	syncPipe := os.NewFile(3, "sync_pipe")
 	if syncPipe != nil {
 		buf := make([]byte, 1)
@@ -237,7 +214,6 @@ func Child(containerID string, userCommand []string) error {
 
 	mergedDir := config.GetContainerMergedDir(containerID)
 
-	// 1. Set container hostname (CLONE_NEWUTS)
 	hostname := containerID
 	if len(hostname) > 12 {
 		hostname = hostname[:12]
@@ -246,12 +222,10 @@ func Child(containerID string, userCommand []string) error {
 		return fmt.Errorf("failed to set hostname: %w", err)
 	}
 
-	// 2. Default standard environment variables
 	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	os.Setenv("HOME", "/root")
 	os.Setenv("TERM", "xterm")
 
-	// Ensure essential networking files exist in container rootfs before pivot_root
 	etcDir := filepath.Join(mergedDir, "etc")
 	_ = os.MkdirAll(etcDir, 0755)
 	resolvConf := filepath.Join(etcDir, "resolv.conf")
@@ -261,7 +235,6 @@ func Child(containerID string, userCommand []string) error {
 		_ = os.WriteFile(hostsPath, []byte(fmt.Sprintf("127.0.0.1 localhost\n::1 localhost\n127.0.0.1 %s\n", hostname)), 0644)
 	}
 
-	// 3. Load container state for volume bind mounts & custom envs
 	state, _ := loadState(containerID)
 	if state != nil {
 		if len(state.Volumes) > 0 {
@@ -277,22 +250,18 @@ func Child(containerID string, userCommand []string) error {
 		}
 	}
 
-	// 4. Setup /dev devices inside mergedDir before pivot_root
 	if err := rootfs.SetupDevNodes(mergedDir); err != nil {
 		return fmt.Errorf("failed to setup dev nodes: %w", err)
 	}
 
-	// 5. Perform pivot_root to isolate filesystem (CLONE_NEWNS)
 	if err := rootfs.PivotRoot(mergedDir); err != nil {
 		return fmt.Errorf("pivot_root failed: %w", err)
 	}
 
-	// 5. Mount essential virtual filesystems (/proc, /sys)
 	if err := rootfs.MountEssentialFilesystems(); err != nil {
 		return fmt.Errorf("failed to mount filesystems: %w", err)
 	}
 
-	// 6. Set working directory
 	if state != nil && state.WorkingDir != "" {
 		_ = os.Chdir(state.WorkingDir)
 	}
@@ -301,7 +270,6 @@ func Child(containerID string, userCommand []string) error {
 		return fmt.Errorf("no command specified for container")
 	}
 
-	// 7. Resolve command binary path inside container rootfs
 	cmdPath := userCommand[0]
 	if !strings.HasPrefix(cmdPath, "/") {
 		pathEnv := os.Getenv("PATH")
@@ -318,11 +286,9 @@ func Child(containerID string, userCommand []string) error {
 		}
 	}
 
-	// 8. Replace child process image with requested user command (syscall.Exec)
 	return unix.Exec(cmdPath, userCommand, os.Environ())
 }
 
-// PS lists containers matching docker ps output format.
 func PS(showAll bool) error {
 	containersDir := config.GetContainersDir()
 	if _, err := os.Stat(containersDir); os.IsNotExist(err) {
@@ -348,7 +314,6 @@ func PS(showAll bool) error {
 			continue
 		}
 
-		// Check if process is still running
 		if state.Status == config.StatusRunning && state.PID > 0 {
 			if err := syscall.Kill(state.PID, 0); err != nil {
 				state.Status = config.StatusExited
@@ -386,7 +351,6 @@ func PS(showAll bool) error {
 	return w.Flush()
 }
 
-// Stop sends SIGTERM followed by SIGKILL to a running container.
 func Stop(containerID string) error {
 	state, err := findContainer(containerID)
 	if err != nil {
@@ -401,7 +365,6 @@ func Stop(containerID string) error {
 	fmt.Printf("Stopping container %s (PID %d)...\n", state.ID[:12], state.PID)
 	_ = syscall.Kill(state.PID, syscall.SIGTERM)
 
-	// Wait up to 2 seconds for graceful shutdown
 	done := make(chan bool, 1)
 	go func() {
 		for i := 0; i < 20; i++ {
@@ -433,7 +396,6 @@ func Stop(containerID string) error {
 	return nil
 }
 
-// RM removes a stopped container.
 func RM(containerID string, force bool) error {
 	state, err := findContainer(containerID)
 	if err != nil {
@@ -459,7 +421,6 @@ func RM(containerID string, force bool) error {
 	return nil
 }
 
-// Logs outputs container log contents.
 func Logs(containerID string) error {
 	state, err := findContainer(containerID)
 	if err != nil {
@@ -477,7 +438,6 @@ func Logs(containerID string) error {
 	return err
 }
 
-// Exec executes a new command inside an existing container's namespaces using nsenter.
 func Exec(containerID string, command []string) error {
 	state, err := findContainer(containerID)
 	if err != nil {
@@ -537,7 +497,6 @@ func findContainer(query string) (*config.ContainerState, error) {
 		if strings.HasPrefix(cid, query) {
 			return loadState(cid)
 		}
-		// Also check by container name
 		st, err := loadState(cid)
 		if err == nil && st.Name == query {
 			return st, nil

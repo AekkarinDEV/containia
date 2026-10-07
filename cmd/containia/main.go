@@ -26,7 +26,6 @@ func main() {
 
 	switch command {
 	case "child":
-		// Internal command executed inside container namespaces
 		if len(os.Args) < 4 {
 			fmt.Fprintf(os.Stderr, "Usage: containia child <id> <cmd> [args...]\n")
 			os.Exit(1)

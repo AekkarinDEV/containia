@@ -16,7 +16,6 @@ import (
 	"containia/pkg/image"
 )
 
-// Build parses a Dockerfile, processes instructions, and tags the resulting image.
 func Build(contextDir, dockerfilePath, tag string) error {
 	if dockerfilePath == "" {
 		dockerfilePath = filepath.Join(contextDir, "Dockerfile")
@@ -120,7 +119,6 @@ func Build(contextDir, dockerfilePath, tag string) error {
 
 	meta.Layers = layers
 
-	// Compute content-addressed image ID
 	hash := sha256.New()
 	hash.Write([]byte(strings.Join(meta.Layers, ":")))
 	hash.Write([]byte(fmt.Sprintf("%v", meta.Config)))
@@ -128,7 +126,6 @@ func Build(contextDir, dockerfilePath, tag string) error {
 	meta.ID = sum[:12]
 	meta.ConfigDigest = "sha256:" + sum
 
-	// Save image descriptor
 	cleanName := image.NormalizeImageName(tag)
 	imageDir := filepath.Join(config.GetImagesDir(), cleanName)
 	if err := os.MkdirAll(imageDir, 0755); err != nil {

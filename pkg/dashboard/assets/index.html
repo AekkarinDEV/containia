@@ -9,9 +9,9 @@
 </head>
 <body data-mode="compact">
   <a class="skip-link" href="#mainContent">Skip to workspace</a>
-  <!-- App Shell -->
+  
   <div class="app-layout">
-    <!-- Sidebar Navigation -->
+    
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">
@@ -65,6 +65,23 @@
           <span>Network</span>
         </button>
 
+        <button class="nav-item" id="tabBtnOSLab" onclick="switchTab('oslab')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <line x1="9" y1="1" x2="9" y2="4"></line>
+            <line x1="15" y1="1" x2="15" y2="4"></line>
+            <line x1="9" y1="20" x2="9" y2="23"></line>
+            <line x1="15" y1="20" x2="15" y2="23"></line>
+            <line x1="20" y1="9" x2="23" y2="9"></line>
+            <line x1="20" y1="14" x2="23" y2="14"></line>
+            <line x1="1" y1="9" x2="4" y2="9"></line>
+            <line x1="1" y1="14" x2="4" y2="14"></line>
+          </svg>
+          <span>OS Kernel Lab</span>
+          <span class="badge-version" style="color: var(--accent); font-weight: 700;">OS</span>
+        </button>
+
         <button class="nav-item" id="tabBtnDocs" onclick="switchTab('docs')">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
@@ -99,9 +116,8 @@
       </div>
     </aside>
 
-    <!-- Main Content Area -->
     <main class="main-content" id="mainContent" tabindex="-1">
-      <!-- Top Navigation Bar -->
+      
       <header class="topbar">
         <div class="topbar-left">
           <h1 class="page-title" id="pageTitle">Containers</h1>
@@ -154,7 +170,6 @@
         <button type="button" id="contextAction" class="btn btn-secondary" onclick="runContextAction()">New container</button>
       </section>
 
-      <!-- KPI Summary Cards -->
       <section class="kpi-grid" aria-label="Runtime overview">
         <div class="kpi-card" id="cardRunning">
           <div class="kpi-header">
@@ -220,7 +235,6 @@
         </div>
       </section>
 
-      <!-- View 1: Containers View -->
       <section id="viewContainers" class="tab-view active">
         <div class="content-panel">
           <div class="panel-header">
@@ -263,7 +277,6 @@
         </div>
       </section>
 
-      <!-- View 2: Images & Layers View -->
       <section id="viewImages" class="tab-view">
         <div class="content-panel">
           <div class="panel-header">
@@ -306,7 +319,6 @@
         </div>
       </section>
 
-      <!-- View 3: Dockerfile Builder View -->
       <section id="viewBuilder" class="tab-view">
         <div class="content-panel">
           <div class="panel-header">
@@ -357,7 +369,6 @@ EXPOSE 5432</textarea>
         </div>
       </section>
 
-      <!-- View 4: Kernel & Network View -->
       <section id="viewNetwork" class="tab-view">
         <div class="content-panel">
           <div class="panel-header">
@@ -386,13 +397,12 @@ EXPOSE 5432</textarea>
             </div>
 
             <div class="net-node-list" id="networkContainersList">
-              <!-- Dynamically populated container network cards -->
+              
             </div>
           </div>
         </div>
       </section>
 
-      <!-- View 5: Documentation & Guide View -->
       <section id="viewDocs" class="tab-view">
         <div class="content-panel">
           <div class="panel-header">
@@ -403,7 +413,7 @@ EXPOSE 5432</textarea>
           </div>
 
           <div class="docs-wrapper">
-            <!-- Section 1: Introduction -->
+            
             <div class="docs-section">
               <h3 class="docs-section-title">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -426,7 +436,6 @@ EXPOSE 5432</textarea>
               </div>
             </div>
 
-            <!-- Section 2: Installation on Windows & Linux -->
             <div class="docs-section">
               <h3 class="docs-section-title">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -437,7 +446,6 @@ EXPOSE 5432</textarea>
                 2. Installation &amp; Setup Guide
               </h3>
 
-              <!-- Step 1 -->
               <div class="step-card">
                 <div class="step-number">1</div>
                 <div class="step-content">
@@ -451,7 +459,6 @@ EXPOSE 5432</textarea>
                 </div>
               </div>
 
-              <!-- Step 2 -->
               <div class="step-card">
                 <div class="step-number">2</div>
                 <div class="step-content">
@@ -464,7 +471,6 @@ EXPOSE 5432</textarea>
                 </div>
               </div>
 
-              <!-- Step 3 -->
               <div class="step-card">
                 <div class="step-number">3</div>
                 <div class="step-content">
@@ -477,7 +483,6 @@ EXPOSE 5432</textarea>
                 </div>
               </div>
 
-              <!-- Step 4 -->
               <div class="step-card">
                 <div class="step-number">4</div>
                 <div class="step-content">
@@ -492,7 +497,6 @@ EXPOSE 5432</textarea>
               </div>
             </div>
 
-            <!-- Section 3: Essential CLI Cheatsheet -->
             <div class="docs-section">
               <h3 class="docs-section-title">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -567,7 +571,6 @@ EXPOSE 5432</textarea>
               </div>
             </div>
 
-            <!-- Section 4: Web UI Features Guide -->
             <div class="docs-section">
               <h3 class="docs-section-title">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -610,7 +613,6 @@ EXPOSE 5432</textarea>
               </div>
             </div>
 
-            <!-- Section 5: Troubleshooting & FAQ -->
             <div class="docs-section">
               <h3 class="docs-section-title">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -641,10 +643,339 @@ EXPOSE 5432</textarea>
           </div>
         </div>
       </section>
+
+      <section id="viewOSLab" class="tab-view">
+        <div class="content-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">OS Kernel Lab &amp; Primitives Visualizer</h2>
+              <p class="panel-subtitle">Explore Linux Kernel Namespaces, Cgroups v2 limits, OverlayFS CoW, Virtual Bridge &amp; Syscall flows</p>
+            </div>
+            <div class="topbar-actions">
+              <button class="btn btn-secondary" onclick="fetchOSLabData()">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M1 20v-6h6"></path>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Refresh OS State
+              </button>
+            </div>
+          </div>
+
+          <div class="os-container-bar">
+            <div class="os-container-picker">
+              <label for="osContainerSelect">Target Container:</label>
+              <select id="osContainerSelect" onchange="onOSContainerChange(this.value)">
+                <option value="">Loading containers...</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <span class="badge-version" id="osTargetStatus">Status: -</span>
+              <span class="badge-inode" id="osTargetIP">IP: -</span>
+              <span class="badge-inode" id="osTargetHostPID">Host PID: -</span>
+            </div>
+          </div>
+
+          <div class="os-subnav">
+            <button class="os-subnav-btn active" id="btnSubNamespaces" onclick="switchOSSubView('namespaces')">
+              🔬 Namespaces &amp; Dual-PID
+            </button>
+            <button class="os-subnav-btn" id="btnSubChaos" onclick="switchOSSubView('chaos')">
+              💥 Cgroups v2 &amp; Chaos Lab
+            </button>
+            <button class="os-subnav-btn" id="btnSubStorage" onclick="switchOSSubView('storage')">
+              📚 OverlayFS &amp; CoW Storage
+            </button>
+            <button class="os-subnav-btn" id="btnSubNetwork" onclick="switchOSSubView('network')">
+              🖧 Virtual Network &amp; NAT
+            </button>
+            <button class="os-subnav-btn" id="btnSubLifecycle" onclick="switchOSSubView('lifecycle')">
+              ⚙️ Syscall &amp; Self-Re-exec
+            </button>
+          </div>
+
+          <div id="subViewNamespaces" class="os-subview active">
+            
+            <div class="dual-pid-card">
+              <div class="pid-box">
+                <div class="pid-box-title">Host PID Namespace</div>
+                <div class="pid-box-val" id="osHostPIDVal">-</div>
+                <div class="pid-box-sub">Process on host task_struct root tree</div>
+              </div>
+              <div class="dual-pid-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M7 16l-4-4m0 0l4-4m-4 4h18m-4 4l4-4m0 0l-4-4"></path>
+                </svg>
+                <span class="dual-pid-badge">CLONE_NEWPID Isolation</span>
+                <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);" id="osNSpidText">NSpid: -</span>
+              </div>
+              <div class="pid-box">
+                <div class="pid-box-title">Container PID Namespace</div>
+                <div class="pid-box-val" style="color: var(--accent-emerald);">PID 1</div>
+                <div class="pid-box-sub">Process root entrypoint in isolated namespace</div>
+              </div>
+            </div>
+
+            <div class="table-responsive" style="margin-top: 20px;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Namespace Type</th>
+                    <th>Container Inode (/proc/&lt;pid&gt;/ns/*)</th>
+                    <th>Host Inode (/proc/self/ns/*)</th>
+                    <th>Status</th>
+                    <th>Operating System Role</th>
+                  </tr>
+                </thead>
+                <tbody id="osNamespaceTableBody">
+                  <tr>
+                    <td colspan="5" class="empty-state">Select a container above to inspect kernel namespace inodes.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="subViewChaos" class="os-subview">
+            
+            <div class="kpi-grid" style="margin-bottom: 24px; padding: 0; border: 0;">
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-title">Cgroups Memory (memory.max)</span>
+                </div>
+                <div class="kpi-value" id="osCgroupMemVal">-</div>
+                <div class="kpi-footer" id="osCgroupMemLimit">Limit: -</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-title">Cgroups Process Limit (pids.max)</span>
+                </div>
+                <div class="kpi-value" id="osCgroupPidsVal">-</div>
+                <div class="kpi-footer" id="osCgroupPidsLimit">Limit: -</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-title">CFS CPU Quota (cpu.max)</span>
+                </div>
+                <div class="kpi-value" id="osCgroupCpuVal">-</div>
+                <div class="kpi-footer" id="osCgroupCpuThrottled">Throttled: 0 µs</div>
+              </div>
+            </div>
+
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 14px;">Live Kernel Boundary Stress Experiments</h3>
+            <div class="chaos-grid">
+              <div class="chaos-card">
+                <div>
+                  <div class="chaos-header">
+                    <span class="chaos-icon">💥</span>
+                    <div>
+                      <h4 class="chaos-title">Fork-Bomb Defense</h4>
+                      <span class="badge-version">Cgroups v2 pids.max</span>
+                    </div>
+                  </div>
+                  <p class="chaos-desc">
+                    Spawns 200 concurrent background processes inside the container. Demonstrates that Linux kernel refuses new forks with <code>EAGAIN: Resource temporarily unavailable</code> when hitting <code>pids.max</code>, completely protecting host OS stability.
+                  </p>
+                </div>
+                <button class="btn btn-secondary" onclick="runChaosExperiment('fork_bomb')">
+                  💥 Trigger Fork Storm
+                </button>
+              </div>
+
+              <div class="chaos-card">
+                <div>
+                  <div class="chaos-header">
+                    <span class="chaos-icon">🛑</span>
+                    <div>
+                      <h4 class="chaos-title">Kernel OOM Killer</h4>
+                      <span class="badge-version">Cgroups v2 memory.events</span>
+                    </div>
+                  </div>
+                  <p class="chaos-desc">
+                    Allocates memory exceeding <code>memory.max</code> boundary. Watches the Linux Kernel invoke <strong>Out-Of-Memory (OOM) Killer</strong> to terminate the offending thread, incrementing the kernel <code>oom_kill</code> hardware event counter.
+                  </p>
+                </div>
+                <button class="btn btn-secondary" onclick="runChaosExperiment('oom')">
+                  🛑 Trigger OOM Test
+                </button>
+              </div>
+
+              <div class="chaos-card">
+                <div>
+                  <div class="chaos-header">
+                    <span class="chaos-icon">⚡</span>
+                    <div>
+                      <h4 class="chaos-title">CFS CPU Quota Throttling</h4>
+                      <span class="badge-version">Cgroups v2 cpu.stat</span>
+                    </div>
+                  </div>
+                  <p class="chaos-desc">
+                    Launches a heavy arithmetic computational loop. Observes Linux Completely Fair Scheduler (CFS) actively freezing execution slices and recording <code>throttled_usec</code> in <code>cpu.stat</code> according to the assigned quota.
+                  </p>
+                </div>
+                <button class="btn btn-secondary" onclick="runChaosExperiment('cpu_stress')">
+                  ⚡ Trigger CPU Quota Stress
+                </button>
+              </div>
+
+              <div class="chaos-card">
+                <div>
+                  <div class="chaos-header">
+                    <span class="chaos-icon">📝</span>
+                    <div>
+                      <h4 class="chaos-title">Copy-on-Write (CoW) Inode</h4>
+                      <span class="badge-version">OverlayFS Union Mount</span>
+                    </div>
+                  </div>
+                  <p class="chaos-desc">
+                    Writes a file inside the container filesystem. Demonstrates that the read-only image layers remain 100% untouched while the kernel clones/creates the new inode directly in the ephemeral <code>upperdir</code>.
+                  </p>
+                </div>
+                <button class="btn btn-secondary" onclick="runChaosExperiment('cow_demo')">
+                  📝 Trigger CoW Write
+                </button>
+              </div>
+            </div>
+
+            <div class="chaos-console-panel">
+              <div class="chaos-console-header">
+                <span>KERNEL LAB INTERACTIVE TERMINAL &amp; EVENT LOGS</span>
+                <span id="chaosStatusIndicator">Idle</span>
+              </div>
+              <div class="chaos-console-body" id="chaosConsole">Select an experiment above to trigger and view kernel events in real-time...</div>
+            </div>
+          </div>
+
+          <div id="subViewStorage" class="os-subview">
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">OverlayFS Multi-Layer Union Mount Architecture</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+              Linux OverlayFS merges multiple lower read-only directory trees with a single upper writable directory into a single unified mount point.
+            </p>
+
+            <div class="overlay-stack">
+              
+              <div class="overlay-layer-card merged-layer">
+                <div class="layer-info-left">
+                  <span class="layer-role" style="color: var(--accent);">Merged View (Container Rootfs)</span>
+                  <span class="layer-path" id="osMergedPath">/var/lib/containia/containers/&lt;id&gt;/merged</span>
+                  <span class="layer-subtext">The unified mount point that the container sees as '/' via pivot_root</span>
+                </div>
+                <span class="badge-version">VIRTUAL MOUNT</span>
+              </div>
+
+              <div class="overlay-layer-card upper-layer">
+                <div class="layer-info-left">
+                  <span class="layer-role" style="color: var(--accent-amber);">Upperdir (Writable Ephemeral Layer - CoW)</span>
+                  <span class="layer-path" id="osUpperPath">/var/lib/containia/containers/&lt;id&gt;/upper</span>
+                  <span class="layer-subtext" id="osUpperStats">Contains all newly created files, modifications, and whiteout devices</span>
+                </div>
+                <span class="badge-version" style="color: var(--accent-amber);">WRITABLE</span>
+              </div>
+
+              <div id="osLowerLayersStack" style="display: flex; flex-direction: column; gap: 10px;">
+                
+              </div>
+            </div>
+
+            <h4 style="font-size: 14px; font-weight: 600; margin: 24px 0 12px;">Active Modified Files in Upperdir (Copy-on-Write Inodes)</h4>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>File Path</th>
+                    <th>Size (Bytes)</th>
+                    <th>Last Modified</th>
+                    <th>Type / Whiteout</th>
+                  </tr>
+                </thead>
+                <tbody id="osUpperFilesTableBody">
+                  <tr>
+                    <td colspan="4" class="empty-state">No files written to container upperdir yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="subViewNetwork" class="os-subview">
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Linux Virtual Ethernet (veth) Packet Traversal Pipeline</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+              Packets travel across Linux Namespaces via Virtual Ethernet cable pairs connected to a software bridge with NAT Masquerading.
+            </p>
+
+            <div class="packet-flow-bar">
+              <div class="flow-node">
+                <div class="flow-node-title">Container Netns</div>
+                <div class="flow-node-dev" id="osNetContDev">eth0</div>
+                <div class="flow-node-ip" id="osNetContIP">172.18.0.2</div>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-node">
+                <div class="flow-node-title">veth Virtual Cable</div>
+                <div class="flow-node-dev">veth pair</div>
+                <div class="flow-node-ip">Kernel Wire</div>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-node">
+                <div class="flow-node-title">Host Interface</div>
+                <div class="flow-node-dev" id="osNetHostDev">vethXXXX</div>
+                <div class="flow-node-ip">Master: containia0</div>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-node">
+                <div class="flow-node-title">Linux Bridge</div>
+                <div class="flow-node-dev" id="osNetBridgeName">containia0</div>
+                <div class="flow-node-ip" id="osNetBridgeIP">172.18.0.1/24</div>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-node">
+                <div class="flow-node-title">iptables NAT</div>
+                <div class="flow-node-dev">MASQUERADE</div>
+                <div class="flow-node-ip">ip_forward=1</div>
+              </div>
+              <div class="flow-arrow">&rarr;</div>
+              <div class="flow-node">
+                <div class="flow-node-title">Host Physical NIC</div>
+                <div class="flow-node-dev">Physical eth0</div>
+                <div class="flow-node-ip">Internet / LAN</div>
+              </div>
+            </div>
+
+            <h4 style="font-size: 14px; font-weight: 600; margin: 24px 0 12px;">Active iptables NAT Masquerade &amp; Port Forwarding (DNAT) Rules</h4>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Rule Specification</th>
+                    <th>Target</th>
+                    <th>Purpose in Operating System</th>
+                  </tr>
+                </thead>
+                <tbody id="osNatRulesTableBody">
+                  <tr>
+                    <td colspan="3" class="empty-state">Loading iptables rules...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="subViewLifecycle" class="os-subview">
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Container Creation Syscall Flow (Self-Re-exec Pattern)</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+              The exact sequence of POSIX and Linux Kernel system calls executed during <code>containia run</code>:
+            </p>
+
+            <div class="lifecycle-timeline" id="osLifecycleTimeline">
+              
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
-  <!-- Modal: Run New Container -->
   <div class="modal-backdrop" id="runModal" role="dialog" aria-modal="true" aria-labelledby="runModalTitle" aria-hidden="true" inert>
     <div class="modal-dialog" tabindex="-1">
       <div class="modal-header">
@@ -657,7 +988,7 @@ EXPOSE 5432</textarea>
             <label for="runImageSelect">Image Reference *</label>
             <input type="text" id="runImageSelect" class="input-text" placeholder="e.g. alpine, postgres:18, my-db:1.0" required>
             <div class="quick-picks" id="quickPicksImages">
-              <!-- Dynamically filled with local image tags -->
+              
             </div>
           </div>
 
@@ -707,7 +1038,6 @@ EXPOSE 5432</textarea>
     </div>
   </div>
 
-  <!-- Modal: Pull Image -->
   <div class="modal-backdrop" id="pullModal" role="dialog" aria-modal="true" aria-labelledby="pullModalTitle" aria-hidden="true" inert>
     <div class="modal-dialog" tabindex="-1">
       <div class="modal-header">
@@ -745,7 +1075,6 @@ EXPOSE 5432</textarea>
     </div>
   </div>
 
-  <!-- Modal: Container Logs -->
   <div class="modal-backdrop" id="logsModal" role="dialog" aria-modal="true" aria-labelledby="logsModalTitle" aria-hidden="true" inert>
     <div class="modal-dialog modal-lg" tabindex="-1">
       <div class="modal-header">
@@ -764,7 +1093,6 @@ EXPOSE 5432</textarea>
     </div>
   </div>
 
-  <!-- Notification Toast -->
   <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
 
   <script src="/assets/app.js"></script>

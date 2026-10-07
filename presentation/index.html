@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Containia — Deconstructing Docker from Scratch | OS Presentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090c10;
+      --surface: #111620;
+      --surface-elevated: #161e2e;
+      --border: #212c40;
+      --border-bright: #324464;
+      --text: #f0f4f8;
+      --text-muted: #8b9bb4;
+      --text-dim: #546682;
+      --accent-blue: #38bdf8;
+      --accent-emerald: #34d399;
+      --accent-purple: #a78bfa;
+      --accent-amber: #fbbf24;
+      --accent-rose: #f87171;
+      --glow-blue: rgba(56, 189, 248, 0.15);
+      --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient Background Glow */
+    .ambient-glow {
+      position: fixed;
+      top: -20vh;
+      left: 20vw;
+      width: 60vw;
+      height: 60vh;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, rgba(167, 139, 250, 0.04) 50%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(80px);
+    }
+
+    /* Presentation Deck Container */
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    /* Slide Elements */
+    .slide {
+      position: absolute;
+      width: 88vw;
+      max-width: 1360px;
+      height: 84vh;
+      max-height: 850px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 56px 68px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.96) translateY(18px);
+      transition: all 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+      z-index: 2;
+    }
+
+    .slide.prev {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(1.02) translateY(-20px);
+    }
+
+    /* Slide Header */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
+
+    .slide-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    .slide-title {
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+
+    .slide-subtitle {
+      font-size: 17px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      font-weight: 400;
+    }
+
+    .slide-num {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      color: var(--text-dim);
+      font-weight: 600;
+      background: var(--surface-elevated);
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    /* Slide Body Layouts */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      height: 100%;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      height: 100%;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      height: 100%;
+    }
+
+    /* Card Components */
+    .card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-2px);
+    }
+
+    .card-icon {
+      font-size: 28px;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .card-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .card-desc {
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+
+    .card-footer {
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-blue);
+    }
+
+    /* Code Block Display */
+    .code-box {
+      background: #06090e;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 22px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: #d1d5db;
+      overflow-x: auto;
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+
+    .code-box .kw { color: #f472b6; font-weight: 600; }
+    .code-box .fn { color: #38bdf8; }
+    .code-box .str { color: #34d399; }
+    .code-box .cm { color: #64748b; font-style: italic; }
+    .code-box .val { color: #fbbf24; }
+
+    /* Highlight Badges & Pills */
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+
+    .pill-blue { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); border: 1px solid rgba(56, 189, 248, 0.3); }
+    .pill-green { background: rgba(52, 211, 153, 0.15); color: var(--accent-emerald); border: 1px solid rgba(52, 211, 153, 0.3); }
+    .pill-rose { background: rgba(248, 113, 113, 0.15); color: var(--accent-rose); border: 1px solid rgba(248, 113, 113, 0.3); }
+    .pill-amber { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); border: 1px solid rgba(251, 191, 36, 0.3); }
+
+    /* Comparison Box */
+    .compare-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      height: 100%;
+    }
+
+    .compare-card {
+      background: var(--surface-elevated);
+      border-radius: 14px;
+      padding: 24px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .compare-card.bad {
+      border-left: 4px solid var(--accent-rose);
+    }
+
+    .compare-card.good {
+      border-left: 4px solid var(--accent-emerald);
+    }
+
+    .compare-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    /* Title Slide Specials */
+    .slide-title-view {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      height: 100%;
+      text-align: left;
+      gap: 20px;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent-blue);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      width: fit-content;
+    }
+
+    .hero-title {
+      font-size: 58px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 24px;
+      color: var(--accent-blue);
+      font-weight: 400;
+      line-height: 1.4;
+      max-width: 900px;
+    }
+
+    .hero-quote {
+      margin-top: 14px;
+      padding-left: 20px;
+      border-left: 3px solid var(--accent-blue);
+      color: var(--text-muted);
+      font-size: 18px;
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 36px;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .meta-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .meta-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    /* Speaker Notes Modal/Overlay */
+    .notes-panel {
+      position: fixed;
+      bottom: 74px;
+      right: 32px;
+      width: 480px;
+      max-height: 340px;
+      background: rgba(17, 22, 32, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-bright);
+      border-radius: 14px;
+      padding: 20px 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .notes-panel.open {
+      display: flex;
+    }
+
+    .notes-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-amber);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .notes-content {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-muted);
+    }
+
+    .notes-content strong {
+      color: #ffffff;
+    }
+
+    /* Bottom Control Bar */
+    .controls-bar {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(17, 22, 32, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      padding: 8px 18px;
+      border-radius: 999px;
+      z-index: 10;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .control-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-main);
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+
+    .control-btn:hover {
+      color: #ffffff;
+      background: var(--surface-elevated);
+    }
+
+    .control-btn.active {
+      color: var(--accent-blue);
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .progress-bar-container {
+      width: 140px;
+      height: 5px;
+      background: var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 10%;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+      border-radius: 999px;
+      transition: width 0.3s ease;
+    }
+
+    .key-hint {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-dim);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Print styles for PDF Export */
+    @media print {
+      body {
+        overflow: visible;
+        background: #000;
+      }
+      .slide {
+        position: relative !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        transform: none !important;
+        page-break-after: always;
+        height: 100vh;
+        width: 100vw;
+        border: none;
+        border-radius: 0;
+      }
+      .controls-bar, .ambient-glow, .notes-panel {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-glow"></div>
+
+  <main class="deck" id="deck">
+
+    <!-- Slide 1: Title & Vision -->
+    <section class="slide active" data-notes="เปิดด้วยประเด็นที่เราทุกคนเคยสงสัยก่อนเรียน OS: คนมักคิดว่า Docker คือ Virtual Machine ตัวจิ๋ว แต่จริง ๆ แล้วมันคือ Linux Process ธรรมดาตัวหนึ่งที่ถูกจำกัดสายตาด้วย Kernel Features ล้วน ๆ วันนี้เราจะแกะกล่องดำนี้ให้เห็นกันบรรทัดต่อบรรทัด">
+      <div class="slide-title-view">
+        <div class="hero-badge">🐧 Operating Systems Course Project</div>
+        <h1 class="hero-title">Containia</h1>
+        <h2 class="hero-subtitle">Deconstructing Docker from Scratch: How Linux Namespaces, Cgroups v2 & OverlayFS Make Containers Real</h2>
+        
+        <div class="hero-quote">
+          "A container is not a VM; it is just an isolated Linux process with resource boundaries."
+        </div>
+
+        <div class="hero-meta">
+          <div class="meta-item">
+            <span class="meta-label">Topic</span>
+            <span class="meta-value">Container Runtime Architecture</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Language</span>
+            <span class="meta-value">Golang 100% (No Docker / containerd)</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Target OS</span>
+            <span class="meta-value">Linux Kernel 5.15+ (WSL2 / Ubuntu)</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Key Syscalls</span>
+            <span class="meta-value">clone(), pivot_root(), mount(), unshare()</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 2: The Core Problem -->
+    <section class="slide" data-notes="เล่าความเข้าใจผิดแบบคลาสสิก: ทำไมคนถึงคิดว่าคอนเทนเนอร์เป็น VM? เพราะเวลาเราเข้าไปข้างใน เราเห็น PID 1, เราเห็น hostname ใหม่, เราเห็น filesystem ใหม่เอี่ยม แต่ถ้าเปิด host ดูด้วย htop จริง ๆ มันคือ process ปกติที่รันอยู่ข้าง ๆ กันเลย">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">The Motivation</span>
+          <h2 class="slide-title">ทำไมเราถึงสร้าง Container Runtime เอง?</h2>
+          <p class="slide-subtitle">รื้อ "กล่องดำ" ของ Docker เพื่อตอบคำถามที่เรียนในห้องเรียน OS</p>
+        </div>
+        <div class="slide-num">02 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="compare-container">
+          <div class="compare-card bad">
+            <div class="compare-header">
+              <span style="color: var(--accent-rose);">❌</span>
+              <span>ความเข้าใจผิดทั่วไป: Docker = VM แบบเบา</span>
+            </div>
+            <p class="card-desc">
+              คิดว่าข้างในมี Hypervisor เล็ก ๆ คอยจำลอง CPU, มี Guest OS Kernel แยกเฉพาะตัว, และบูตเครื่องขึ้นมาใหม่ทุกครั้งที่รัน <code>docker run</code>
+            </p>
+            <div class="code-box">
+[Host OS Kernel]
+  └─ Hypervisor (Type 2)
+       ├─ [Guest OS Kernel 1] -> Hardware Emulation (ช้า/กินแรม)
+       └─ [Guest OS Kernel 2] -> Emulated BIOS & Devices
+            </div>
+            <p style="font-size: 13px; color: var(--text-dim);">ผลลัพธ์: เปลือง RAM มหาศาล บูตช้าเป็นนาที</p>
+          </div>
+
+          <div class="compare-card good">
+            <div class="compare-header">
+              <span style="color: var(--accent-emerald);">✅</span>
+              <span>ความจริงระดับ Kernel: แค่ Process ติดฟิลเตอร์</span>
+            </div>
+            <p class="card-desc">
+              ไม่มี Hypervisor, ไม่ได้รัน Kernel ซ้อน Kernel ทุกคอนเทนเนอร์ใช้ <strong>Host Linux Kernel ร่วมกัน 100%</strong> เพียงแต่ถูก Kernel จำกัดมุมมอง (Namespaces) และจำกัดปริมาณการใช้ทรัพยากร (Cgroups)
+            </p>
+            <div class="code-box">
+[Single Host Linux Kernel]
+  ├─ Normal Process (PID 3840)
+  └─ Container Process (Host PID 4510 ──mapped──> Container PID 1)
+       ├─ Views: Isolated UTS, PID, MNT, NET, IPC
+       └─ Bounds: Cgroups v2 memory.max, pids.max
+            </div>
+            <p style="font-size: 13px; color: var(--accent-emerald);">ผลลัพธ์: สปอว์นเสร็จในหลัก Milliseconds, ประสิทธิภาพเทียบเท่า Native Process</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 3: The 4 Pillars -->
+    <section class="slide" data-notes="เน้น 4 เสาหลักของ Linux Kernel: ถ้าใครถามว่า Docker ทำมาจากอะไร คำตอบคือ 4 อย่างนี้รวมกัน Namespaces หลอกตา, Cgroups คุมพลัง, OverlayFS ซ้อนไฟล์, Virtual Network ขุดท่อแลน">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Kernel Primitives</span>
+          <h2 class="slide-title">4 เสาหลัก Linux Kernel ที่ประกอบร่างเป็น Container</h2>
+          <p class="slide-subtitle">ฟีเจอร์ระดับระบบปฏิบัติการที่รวมกันจนเกิดเป็น Container Abstraction</p>
+        </div>
+        <div class="slide-num">03 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-4">
+          <div class="card">
+            <div class="card-icon">👁️</div>
+            <h3 class="card-title">1. Namespaces</h3>
+            <span class="pill pill-blue">การแยกมุมมอง (Isolation)</span>
+            <p class="card-desc">
+              หลอก process ให้เห็นเฉพาะทรัพยากรของตนเอง เช่น เห็นตัวเองเป็น PID 1, มี Hostname ตัวเอง, มี Network Interfaces และ Routing Table แยกจากโฮสต์
+            </p>
+            <div class="card-footer">UTS, PID, MNT, NET, IPC, USER</div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🛡️</div>
+            <h3 class="card-title">2. Cgroups v2</h3>
+            <span class="pill pill-green">จำกัดทรัพยากร (Resource Limits)</span>
+            <p class="card-desc">
+              ควบคุมการกิน RAM ไม่ให้เครื่องดับ (OOM), คุมโควตาเวลา CPU ไม่ให้โปรเซสแย่ง Core อื่น, และจำกัดจำนวน process กัน Fork-Bomb โจมตี
+            </p>
+            <div class="card-footer">memory.max, cpu.max, pids.max</div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">📂</div>
+            <h3 class="card-title">3. OverlayFS</h3>
+            <span class="pill pill-amber">ระบบไฟล์ซ้อนชั้น (Layered Rootfs)</span>
+            <p class="card-desc">
+              นำ Base Image ที่อ่านได้อย่างเดียว (lowerdir) มาซ้อนกับโฟลเดอร์เขียนชั่วคราว (upperdir) ด้วยกลไก Copy-on-Write พร้อมใช้ <code>pivot_root</code> ตัดขาดจากระบบหลัก
+            </p>
+            <div class="card-footer">lowerdir, upperdir, mergeddir</div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🌐</div>
+            <h3 class="card-title">4. Virtual Net</h3>
+            <span class="pill pill-rose">เครือข่ายเสมือน (Connectivity)</span>
+            <p class="card-desc">
+              สร้าง Linux Bridge (<code>containia0</code>), จับคู่สายแลนเสมือน (veth-pair) ลากข้าม Network Namespace และทำ NAT Masquerade ให้ออกเน็ตได้
+            </p>
+            <div class="card-footer">bridge, veth-pair, iptables NAT</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 4: Full Stack Architecture Diagram -->
+    <section class="slide" data-notes="สไลด์แผนภาพสถาปัตยกรรมแบบ End-to-End: ชี้ให้เห็นการเดินทางตั้งแต่ฝั่ง Host บน Mac/Windows ผ่าน Hypervisor WSL2 เข้าสู่ Linux Kernel และลึกลงไปจนถึงกระบวนการ Fork Process ที่อยู่ข้างในห้องขังของ Container">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">System Blueprint</span>
+          <h2 class="slide-title">Full-Stack Architecture: จาก Host สู่ Container</h2>
+          <p class="slide-subtitle">แผนผังเลเยอร์ตั้งแต่ระดับ macOS / Windows ไปจนถึง Process PID 1 ภายใน Container</p>
+        </div>
+        <div class="slide-num">04 / 11</div>
+      </div>
+      <div class="slide-body" style="padding: 0; display: flex; justify-content: center; align-items: center; overflow: hidden;">
+        <div style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #06090e; border: 1px solid var(--border); border-radius: 12px; padding: 12px; position: relative;">
+          <img src="containia_architecture_layers.jpg" alt="Containia Architecture Layers" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px; filter: drop-shadow(0 10px 25px rgba(0,0,0,0.5));">
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 4: Self-Re-exec Pattern -->
+    <section class="slide" data-notes="จุดนี้เป็นเทคนิคขั้นสูงที่ runc และ Docker ใช้จริง: เล่าว่าภาษา Go มี runtime scheduler ที่ spawn OS threads ตลอดเวลา ทำให้ unshare namespace ตรงๆ พัง ทางแก้คือ fork ตัวเองผ่าน /proc/self/exe child พร้อม cloneflags ก่อนที่ runtime ฝั่ง child จะทันแตก thread">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Architecture & Gotchas</span>
+          <h2 class="slide-title">The Go Concurrency Trap & Self-Re-exec Pattern</h2>
+          <p class="slide-subtitle">ปัญหาคลาสสิกของภาษา Go: ทำไมสั่ง clone namespaces ตรง ๆ ในฟังก์ชันปกติไม่ได้?</p>
+        </div>
+        <div class="slide-num">05 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <h3 class="card-title">The Trap: Goroutines & OS Threads</h3>
+            <p class="card-desc">
+              ภาษา Go เป็น Multi-threaded Runtime เสมอ แต่ System Call ของ Linux บางตัว เช่น <code>setns</code> หรือ <code>unshare</code> จะมีผลเฉพาะ <strong>OS Thread ตัวที่เรียก</strong> ไม่ได้ส่งผลต่อทุก Thread ในโปรเซส ทำให้ Goroutine อื่นยังมองเห็น Host เหมือนเดิม
+            </p>
+            <div class="code-box">
+<span class="cm">// วิธีแก้: runc / Docker Self-Re-exec Pattern</span>
+<span class="kw">cmd</span> := exec.Command(<span class="str">"/proc/self/exe"</span>, <span class="str">"child"</span>, cid, userCmd)
+
+<span class="kw">cmd.SysProcAttr</span> = &syscall.SysProcAttr{
+    <span class="kw">Cloneflags</span>: syscall.CLONE_NEWUTS | 
+                syscall.CLONE_NEWPID | 
+                syscall.CLONE_NEWNS  | 
+                syscall.CLONE_NEWIPC | 
+                syscall.CLONE_NEWNET,
+}
+            </div>
+            <p class="card-desc" style="font-size: 13.5px;">
+              Parent บนโฮสต์สั่ง Fork รันตัวมันเองอีกรอบ พร้อมแปะ <code>Cloneflags</code> ไปกับ syscall <code>clone()</code> ทำให้ Child เกิดมาอยู่ในห้องขังที่ถูกแยกเดี่ยวทันทีก่อน Goroutine จะเริ่มทำงาน
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">Child Process Execution Lifecycle</h3>
+            <div class="code-box" style="font-size: 12.5px;">
+[Host Parent: containia run alpine sh]
+      │
+      ├─ 1. Prepare OverlayFS mount (merged dir)
+      ├─ 2. Setup Cgroups v2 directory (/sys/fs/cgroup/containia/<cid>)
+      ├─ 3. Fork-exec via cloneflags -> Spawns Child
+      │
+      ▼
+[Child Process (Inside Isolated Namespaces)]
+      │
+      ├─ 4. Wait on sync pipe from parent (Net ready)
+      ├─ 5. unix.Sethostname("containia-xxxx")
+      ├─ 6. Bind mount /dev nodes (null, zero, random, shm)
+      ├─ 7. rootfs.PivotRoot(mergedDir) -> Switches '/'
+      ├─ 8. Mount private /proc and /sys
+      │
+      ▼
+[syscall.Execve("/bin/sh")]
+      └─ Replaces child process image completely
+         User app runs as native PID 1 with ZERO overhead!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 5: Storage Layering & pivot_root -->
+    <section class="slide" data-notes="อธิบายเรื่อง Storage: ทำไมเราไม่ใช้ chroot? เพราะ chroot มีช่องโหว่ relative path escape ได้ แต่ pivot_root สลับ root tree จริง ๆ พร้อมทั้งอธิบาย OverlayFS ว่าเวลารัน alpine หลายตัว ทุกตัวแชร์ lowerdir เดียวกัน ไม่กินพื้นที่เพิ่ม">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Filesystem Subsystem</span>
+          <h2 class="slide-title">Multi-Layer OverlayFS & pivot_root Security</h2>
+          <p class="slide-subtitle">จำลองระบบ Storage ของ OCI/Docker จากจุดเริ่มต้น</p>
+        </div>
+        <div class="slide-num">06 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <h3 class="card-title">OverlayFS (Union Mount Architecture)</h3>
+            <p class="card-desc">
+              เวลาดึง Image อย่าง <code>postgres</code> หรือ <code>alpine</code> มา ตัวชั้น Layer ล่างสุดจะไม่มีการแก้ไขเด็ดขาด:
+            </p>
+            <div class="code-box">
+┌────────────────────────────────────────────────────────┐
+│  Merged View: /var/lib/containia/containers/<id>/merged │ (สิ่งที่ Container เห็น)
+└──────────────────────────┬─────────────────────────────┘
+                           │
+    ┌──────────────────────┴──────────────────────┐
+    ▼                                             ▼
+┌───────────────────────────┐         ┌───────────────────────────┐
+│ UpperDir (Writable Layer) │         │ LowerDir (Base Image Read)│
+│ - Ephemeral container data│         │ - Shared between all cont.│
+│ - Copy-on-Write (CoW) files│        │ - Immutable & Bit-perfect │
+└───────────────────────────┘         └───────────────────────────┘
+            </div>
+            <p class="card-desc" style="font-size: 13.5px;">
+              ถ้า Container แก้ไฟล์ <code>/etc/hosts</code> ระบบจะก๊อปปี้ขึ้นมาที่ <code>upperdir</code> ทันที โดยที่ Base Image ไม่ถูกกระทบเลยแม้แต่ไบต์เดียว
+            </p>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">ทำไม Docker ถึงเลิกใช้ `chroot` แล้วเปลี่ยนเป็น `pivot_root`?</h3>
+            <div class="compare-card bad" style="padding: 14px;">
+              <strong style="color: var(--accent-rose);">chroot Jail (Insecure / Legacy)</strong>
+              <p style="font-size: 13px; color: var(--text-muted);">
+                แค่เปลี่ยนตัวแปร current root pointer ของ process แต่ตัว mount table เดิมยังอยู่ ถ้า process มีสิทธิ์ root จะสามารถเปิด File Descriptor ทะลุออกไปนอกคุกได้ด้วย relative traversal (<code>../../</code>)
+              </p>
+            </div>
+            <div class="compare-card good" style="padding: 14px; margin-top: 10px;">
+              <strong style="color: var(--accent-emerald);">pivot_root (OCI Container Standard)</strong>
+              <p style="font-size: 13px; color: var(--text-muted);">
+                สลับ Root Filesystem ของ Mount Namespace ทั้งระบบอย่างแท้จริง ย้าย Root เดิมของโฮสต์ไปซ่อนที่ <code>/.old_root</code> แล้วสั่ง <code>umount -l</code> ทิ้ง ทำให้ระบบไฟล์ของโฮสต์หายไปจากมุมมองของคอนเทนเนอร์ 100%
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 6: Cgroups v2 & Chaos Experiments -->
+    <section class="slide" data-notes="พูดถึงการทดลอง Chaos Lab: เราเขียนฟังก์ชันทดสอบ 3 การโจมตี 1) Fork bomb พุ่งชน pids.max โฮสต์รอด 2) OOM kill กินแรมเกิน cgroup ถูก kernel ฆ่าทันที 3) CFS Scheduler throttle เวลา CPU เมื่อกินเกินโควตา">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Resource Management</span>
+          <h2 class="slide-title">Cgroups v2: ควบคุมและทดสอบการชนเพดานทรัพยากร</h2>
+          <p class="slide-subtitle">การใช้ Linux Unified Hierarchy จัดการฮาร์ดแวร์จริง</p>
+        </div>
+        <div class="slide-num">07 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-3">
+          <div class="card">
+            <span class="pill pill-rose">Chaos Test #1</span>
+            <h3 class="card-title">Fork-Bomb Defense</h3>
+            <p class="card-desc">
+              เขียน loop ปั๊ม <code>(sleep 10 &)</code> จำนวน 200 ตัวรัว ๆ ข้างในคอนเทนเนอร์
+            </p>
+            <div class="code-box" style="font-size: 12px;">
+# /sys/fs/cgroup/.../pids.max = 100
+fork: retry: Resource temporarily unavailable
+pids.current capped at 100
+            </div>
+            <p class="card-desc" style="font-size: 13px; color: var(--accent-emerald);">
+              ✅ <strong>ผลลัพธ์:</strong> คอนเทนเนอร์ spawn ต่อไม่ได้ ได้รับ <code>EAGAIN</code> แต่เครื่องโฮสต์ยังตอบสนองลื่นไหล 100%
+            </p>
+          </div>
+
+          <div class="card">
+            <span class="pill pill-amber">Chaos Test #2</span>
+            <h3 class="card-title">Kernel OOM Killer</h3>
+            <p class="card-desc">
+              รัน <code>dd if=/dev/zero of=/dev/shm/test</code> เพื่อยัดข้อมูล 512MB ลงบนแรมที่จำกัดไว้แค่ 64MB
+            </p>
+            <div class="code-box" style="font-size: 12px;">
+# memory.events
+oom 1
+oom_kill 1
+Killed process (dd)
+            </div>
+            <p class="card-desc" style="font-size: 13px; color: var(--accent-emerald);">
+              ✅ <strong>ผลลัพธ์:</strong> Linux Out-Of-Memory Killer ทำงานทันที ฆ่าเฉพาะโปรเซสที่ละเมิด โฮสต์ปลอดภัย
+            </p>
+          </div>
+
+          <div class="card">
+            <span class="pill pill-blue">Chaos Test #3</span>
+            <h3 class="card-title">CFS CPU Throttling</h3>
+            <p class="card-desc">
+              รันโปรแกรมคำนวณเลขวนลูป 100% บนคอนเทนเนอร์ที่ตั้งค่า <code>--cpus 0.5</code> (50,000 / 100,000 µs)
+            </p>
+            <div class="code-box" style="font-size: 12px;">
+# cpu.stat
+nr_periods 16
+nr_throttled 15
+throttled_usec 750000 (750ms)
+            </div>
+            <p class="card-desc" style="font-size: 13px; color: var(--accent-emerald);">
+              ✅ <strong>ผลลัพธ์:</strong> Linux Completely Fair Scheduler ทำการ suspend เธรดเป็นระยะตรงตามทฤษฎีเป๊ะ
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 7: Virtual Networking & Sync Pipe -->
+    <section class="slide" data-notes="เล่าเรื่องบั๊กที่เจ็บปวดที่สุด: Race condition ระหว่าง Host กับ Container จังหวะที่ย้าย veth เข้า netns ลูกบูตเร็วกว่าเน็ตมา แก้ด้วย Synchronization Pipe FD 3 เหมือนที่ runc ทำ">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Networking & Concurrency</span>
+          <h2 class="slide-title">Virtual Networking & The Process Sync Pipe</h2>
+          <p class="slide-subtitle">สายแลนเสมือน (veth-pair) และการแก้ Race Condition ด้วย Pipe บน FD 3</p>
+        </div>
+        <div class="slide-num">08 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <h3 class="card-title">Virtual Network Pipeline</h3>
+            <div class="code-box" style="font-size: 12.5px;">
+[External World / LAN]
+        │
+        ▼ (iptables NAT Masquerade)
+[Linux Bridge: containia0 (172.19.0.1/24)]
+        │
+        ├─ Host Veth (vh-3a9f1b)
+        │       ║ (Virtual Ethernet Cable)
+        ├─ Container Veth (vc-3a9f1b ──renamed──> eth0)
+        │       │
+        │       ▼ [Container Network Namespace]
+        │         IP: 172.19.0.4/24
+        │         Default Gateway: 172.19.0.1
+        │
+        └─ Host Port Forwarding (iptables -t nat -A PREROUTING -p tcp --dport 3000 -j DNAT)
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">The Real Nightmare: The Network Race Condition</h3>
+            <p class="card-desc">
+              <strong>บั๊กที่เจอ:</strong> พอ Parent สั่ง Fork ปุ๊บ Child ใน Container บูตขึ้นมาทันทีและพยายามรันคำสั่งของผู้ใช้ แต่ Host Parent ยังย้ายสาย <code>veth</code> เข้าไปใน namespace ไม่เสร็จ ทำให้โปรแกรมในคอนเทนเนอร์แครชเพราะหาการ์ดเน็ตไม่เจอ!
+            </p>
+            <div class="code-box">
+<span class="cm">// วิธีแก้: Pipe Synchronization (FD 3)</span>
+<span class="kw">Parent:</span>
+  1. cmd.ExtraFiles = []*os.File{syncR} <span class="cm">// ส่งไปเป็น FD 3</span>
+  2. cmd.Start()
+  3. network.SetupContainerNetwork(pid)
+  4. syncW.Write([]byte{1}) <span class="cm">// ส่งสัญญาณปลดล็อก!</span>
+
+<span class="kw">Child:</span>
+  1. syncPipe := os.NewFile(3, "sync_pipe")
+  2. syncPipe.Read(buf) <span class="cm">// บล็อกรอจนกว่าโฮสต์จะเซ็ตเน็ตเสร็จ</span>
+  3. pivot_root and run user application!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 8: Real World 3-Tier Stack -->
+    <section class="slide" data-notes="นี่คือเครื่องพิสูจน์ว่า runtime ของเราไม่ใช่ของเล่น: เรารัน 3-tier architecture จริง ๆ Next.js 16 + Express API + PostgreSQL 18 และเชื่อมโยงหากันด้วย DNS /etc/hosts sync">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Production Benchmark</span>
+          <h2 class="slide-title">บททดสอบจริง: รัน 3-Tier Production Stack</h2>
+          <p class="slide-subtitle">ไม่ใช่แค่รัน Shell ธรรมดา แต่รันระบบจริงพร้อมกัน 3 คอนเทนเนอร์</p>
+        </div>
+        <div class="slide-num">09 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">⚡</div>
+            <h3 class="card-title">Frontend: Next.js 16</h3>
+            <span class="pill pill-blue">Port 3000 -> 3000</span>
+            <p class="card-desc">
+              รันบน Bun runtime มี WebKit JavaScriptCore ข้างใน ต้องทำ <code>SetupDevNodes</code> mount <code>/dev/shm</code> และ <code>/dev/null</code> เพื่อไม่ให้แครช SIGILL
+            </p>
+            <div class="code-box" style="font-size: 11px;">$ containia run -d -p 3000:3000 nextjs:latest</div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">⚙️</div>
+            <h3 class="card-title">Backend: Express API</h3>
+            <span class="pill pill-green">Port 8000 -> 8000</span>
+            <p class="card-desc">
+              REST API คุยกับ Database ผ่าน Hostname <code>test-db:5432</code> โดยตรง ด้วยระบบ <strong>Inter-Container /etc/hosts Sync</strong> อัตโนมัติ
+            </p>
+            <div class="code-box" style="font-size: 11px;">$ containia run -d -p 8000:8000 --name test-backend backend:latest</div>
+          </div>
+
+          <div class="card">
+            <div class="card-icon">🐘</div>
+            <h3 class="card-title">Database: PostgreSQL 18</h3>
+            <span class="pill pill-purple">Port 5432 (Internal)</span>
+            <p class="card-desc">
+              Official OCI Image ดึงตรงจาก Docker Hub มาแกะ Layer สตรีมข้อมูลลงบน Persistent Volume Mount พร้อม IPC Semaphores แบบแยกอิสระ
+            </p>
+            <div class="code-box" style="font-size: 11px;">$ containia run -d -p 5432:5432 --name test-db postgres:18</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 10px; background: rgba(52, 211, 153, 0.05); border-color: rgba(52, 211, 153, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong style="color: var(--accent-emerald);">🎯 End-to-End Health Assertion: Passed 100%</strong>
+              <p style="font-size: 13.5px; color: var(--text-muted); margin-top: 4px;">
+                Browser บนเครื่องจริงเปิด <code>http://localhost:3000</code> เชื่อมต่อไปยัง API <code>:8000</code> และ Query ดึงข้อมูลจาก PostgreSQL <code>:5432</code> ได้แบบไร้รอยต่อ
+              </p>
+            </div>
+            <span class="pill pill-green" style="font-size: 13px;">Zero Crashes</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 9: The Web Monitor & OS Lab GUI -->
+    <section class="slide" data-notes="โชว์ความเจ๋งของ GUI: เราทำเว็บคอนโซลฝังในไบนารีเดียวเพื่อการเรียนการสอน มีตัววัด Dual-PID เปรียบเทียบ Host PID กับ Container PID 1 และ visualizer ของ OverlayFS">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Educational Tooling</span>
+          <h2 class="slide-title">Containia Monitor & OS Kernel Lab GUI</h2>
+          <p class="slide-subtitle">เปลี่ยนคอนเซปต์นามธรรมใน Kernel ให้มองเห็นและกดเล่นได้ด้วยตาเปล่า</p>
+        </div>
+        <div class="slide-num">10 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <h3 class="card-title">Dual-PID & Namespace Inode Inspector</h3>
+            <p class="card-desc">
+              ระบบแสดงผลเปรียบเทียบสด ๆ ระหว่าง <strong>Host PID</strong> บนเครื่องจริง กับ <strong>Container PID 1</strong> พร้อมอ่านค่า <code>NSpid</code> จาก Kernel <code>/proc/&lt;pid&gt;/status</code>
+            </p>
+            <div class="code-box" style="font-size: 12.5px;">
+[Dual-PID Remapping Table]
+Process      Host PID    Container PID    Status
+node server   48210       1 (Root PID)     ISOLATED
+
+[Namespace Inode Comparison]
+Type    Container Inode       Host Inode           State
+pid:    pid:[4026532450]      pid:[4026531836]     ISOLATED ✅
+net:    net:[4026532454]      net:[4026531992]     ISOLATED ✅
+uts:    uts:[4026532452]      uts:[4026531838]     ISOLATED ✅
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">Interactive OS Chaos Dashboard</h3>
+            <p class="card-desc">
+              ในหน้าเว็บมีปุ่มสั่งยิงการทดลองระดับ Kernel ผ่าน REST API ทันที:
+            </p>
+            <ul style="font-size: 14px; color: var(--text-muted); padding-left: 20px; line-height: 1.8;">
+              <li><strong>Interactive Chaos Buttons:</strong> กดปุ่มสั่งยิง Fork-bomb หรือสั่งรัน Memory stress เพื่อดู Kernel Events เพิ่มขึ้นแบบ Real-time</li>
+              <li><strong>OverlayFS Stack Exploder:</strong> ส่องดูรายการไฟล์ใน <code>upperdir</code> ที่ถูก Copy-on-Write ออกมาจริง ๆ</li>
+              <li><strong>Syscall Flowchart:</strong> แสดงเส้นทาง 6 ขั้นตอนตั้งแต่ <code>clone()</code> จนถึง <code>execve()</code></li>
+            </ul>
+            <div class="card-footer" style="margin-top: 20px;">
+              Single Binary Embedding ด้วย Go <code>//go:embed assets/*</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 10: Conclusion & Takeaways -->
+    <section class="slide" data-notes="สรุปปิดท้าย: สิ่งสำคัญที่สุดไม่ใช่โค้ด แต่คือความเข้าใจว่าเทคโนโลยีที่เราใช้กันทุกวันนี้ไม่ได้ซับซ้อนเกินเข้าใจ มันสร้างจากพื้นฐานวิชา OS ที่อาจารย์สอนในห้องทั้งนั้น">
+      <div class="slide-header">
+        <div>
+          <span class="slide-tag">Summary & Learnings</span>
+          <h2 class="slide-title">บทสรุปและสิ่งที่เราได้เรียนรู้จากวิชา OS</h2>
+          <p class="slide-subtitle">การเรียนรู้ผ่านการลงมือทำจริง (Learning by Building)</p>
+        </div>
+        <div class="slide-num">11 / 11</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-3">
+          <div class="card" style="border-top: 3px solid var(--accent-blue);">
+            <div class="card-icon">💡</div>
+            <h3 class="card-title">1. Docker ไม่ใช่เวทมนตร์</h3>
+            <p class="card-desc">
+              Container เกิดจากการประกอบร่างอย่างประณีตของฟีเจอร์ Linux ที่มีอยู่แล้ว: Namespaces (หลอกตา) + Cgroups (คุมแรง) + OverlayFS (ซ้อนไฟล์)
+            </p>
+          </div>
+
+          <div class="card" style="border-top: 3px solid var(--accent-emerald);">
+            <div class="card-icon">🧠</div>
+            <h3 class="card-title">2. ทฤษฎีในห้องมีชีวิตจริง</h3>
+            <p class="card-desc">
+              เรื่อง Process States, File Descriptors, POSIX Shared Memory, และ Race Conditions ชัดเจนขึ้นทันทีเมื่อเราต้องจัดการกับ System Call ระดับล่างด้วยตัวเอง
+            </p>
+          </div>
+
+          <div class="card" style="border-top: 3px solid var(--accent-purple);">
+            <div class="card-icon">🚀</div>
+            <h3 class="card-title">3. ความงามของ Go + Linux</h3>
+            <p class="card-desc">
+              เข้าใจอย่างลึกซึ้งว่าทำไม Docker และ Kubernetes ถึงเลือกภาษา Go สำหรับ Systems Programming และแก้ปัญหาเรื่อง Concurrency ร่วมกับ Kernel ได้อย่างไร
+            </p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 14px; text-align: center; padding: 28px;">
+          <h3 style="font-size: 24px; color: #ffffff; margin-bottom: 6px;">Thank You! / Q&A</h3>
+          <p style="font-size: 15px; color: var(--accent-blue); font-family: var(--font-mono);">
+            GitHub Repository: Containia — Mini Container Runtime From Scratch
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Presenter Notes Overlay -->
+  <aside class="notes-panel" id="notesPanel">
+    <div class="notes-title">
+      <span>🎙️ Presenter Notes (N)</span>
+      <button id="closeNotesBtn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px;">✕</button>
+    </div>
+    <div class="notes-content" id="notesText"></div>
+  </aside>
+
+  <!-- Bottom Interactive Controls Bar -->
+  <nav class="controls-bar" aria-label="Slide controls">
+    <button class="control-btn" id="prevBtn" title="Previous Slide (← / PageUp)">
+      <span>←</span> Prev
+    </button>
+    
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <span id="slideCounter" style="font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); min-width: 45px; text-align: center;">1 / 11</span>
+
+    <button class="control-btn" id="nextBtn" title="Next Slide (→ / Space / PageDown)">
+      Next <span>→</span>
+    </button>
+
+    <div style="width: 1px; height: 18px; background: var(--border); margin: 0 4px;"></div>
+
+    <button class="control-btn" id="notesBtn" title="Toggle Presenter Notes (Key: N)">
+      <span>🎙️</span> Notes
+    </button>
+
+    <button class="control-btn" id="fullscreenBtn" title="Toggle Fullscreen (Key: F)">
+      <span>⛶</span> Fullscreen
+    </button>
+  </nav>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const progressBar = document.getElementById('progressBar');
+    const slideCounter = document.getElementById('slideCounter');
+    const notesBtn = document.getElementById('notesBtn');
+    const notesPanel = document.getElementById('notesPanel');
+    const notesText = document.getElementById('notesText');
+    const closeNotesBtn = document.getElementById('closeNotesBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+    let currentIdx = 0;
+
+    function updateSlide(idx) {
+      if (idx < 0) idx = 0;
+      if (idx >= slides.length) idx = slides.length - 1;
+
+      slides.forEach((slide, i) => {
+        slide.classList.remove('active', 'prev');
+        if (i === idx) {
+          slide.classList.add('active');
+        } else if (i < idx) {
+          slide.classList.add('prev');
+        }
+      });
+
+      currentIdx = idx;
+
+      // Update progress bar & counter
+      const progressPercent = ((idx + 1) / slides.length) * 100;
+      progressBar.style.width = `${progressPercent}%`;
+      slideCounter.textContent = `${idx + 1} / ${slides.length}`;
+
+      // Update speaker notes
+      const note = slides[idx].dataset.notes || 'No speaker notes for this slide.';
+      notesText.innerHTML = note.replace(/\n/g, '<br><br>');
+
+      // Update button states
+      prevBtn.disabled = idx === 0;
+      nextBtn.disabled = idx === slides.length - 1;
+      prevBtn.style.opacity = idx === 0 ? '0.4' : '1';
+      nextBtn.style.opacity = idx === slides.length - 1 ? '0.4' : '1';
+    }
+
+    function nextSlide() {
+      if (currentIdx < slides.length - 1) {
+        updateSlide(currentIdx + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentIdx > 0) {
+        updateSlide(currentIdx - 1);
+      }
+    }
+
+    function toggleNotes() {
+      notesPanel.classList.toggle('open');
+      notesBtn.classList.toggle('active', notesPanel.classList.contains('open'));
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Keyboard Navigation
+    window.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowRight':
+        case ' ':
+        case 'PageDown':
+          e.preventDefault();
+          nextSlide();
+          break;
+        case 'ArrowLeft':
+        case 'Backspace':
+        case 'PageUp':
+          e.preventDefault();
+          prevSlide();
+          break;
+        case 'Home':
+          e.preventDefault();
+          updateSlide(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          updateSlide(slides.length - 1);
+          break;
+        case 'n':
+        case 'N':
+          toggleNotes();
+          break;
+        case 'f':
+        case 'F':
+          toggleFullscreen();
+          break;
+        case 'Escape':
+          if (notesPanel.classList.contains('open')) {
+            toggleNotes();
+          }
+          break;
+      }
+    });
+
+    // Button event listeners
+    prevBtn.addEventListener('click', prevSlide);
+    nextBtn.addEventListener('click', nextSlide);
+    notesBtn.addEventListener('click', toggleNotes);
+    closeNotesBtn.addEventListener('click', toggleNotes);
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+    // Initial setup
+    updateSlide(0);
+  </script>
+</body>
+</html>

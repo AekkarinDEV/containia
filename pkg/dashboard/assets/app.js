@@ -1,9 +1,3 @@
-/**
- * Containia Monitor - Frontend Application Logic
- * Modular reactive client for Containia Mini Container Runtime API.
- */
-
-// Global State
 const state = {
   containers: [],
   images: [],
@@ -60,9 +54,14 @@ const tabCopy = {
     terminal: ['$ containia --help', 'Copy commands and explore how Containia uses Linux primitives.', 'New container'],
     guided: ['LEARN THE BASICS', 'Start with installation, then pull an image and run a container.', 'New container'],
   },
+  oslab: {
+    title: 'OS Kernel Lab & Primitives',
+    compact: ['KERNEL PRIMITIVES', 'Inspect Namespaces, Cgroups v2 limits, OverlayFS CoW, and Syscalls.', 'Refresh OS State'],
+    terminal: ['$ cat /proc/<pid>/status | grep NSpid', 'Inspect Linux kernel namespace inodes and cgroups v2 limits.', 'Refresh OS State'],
+    guided: ['OS DEEP DIVE', 'Observe how Linux Kernel isolates processes, memory, and storage.', 'Refresh OS State'],
+  },
 };
 
-// Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
   let savedMode = 'compact';
   try { savedMode = localStorage.getItem('containia-mode') || 'compact'; } catch (_) {}
@@ -171,9 +170,6 @@ function changePollInterval(val) {
   showToast(`Polling interval set to ${val === '0' ? 'Paused' : val / 1000 + 's'}`, 'info');
 }
 
-/**
- * Fetch all runtime state from Containia Backend API
- */
 async function fetchDashboardData() {
   if (state.polling) return;
   state.polling = true;
@@ -206,9 +202,6 @@ async function fetchDashboardData() {
   }
 }
 
-/**
- * Update Top KPI Summary Cards
- */
 function updateKPICards() {
   const runningContainers = state.containers.filter(c => c.status === 'Running');
   const runningEl = document.getElementById('kpiRunningVal');
@@ -221,7 +214,6 @@ function updateKPICards() {
   if (navRunningEl) navRunningEl.textContent = runningContainers.length;
   if (navImagesEl) navImagesEl.textContent = state.images.length;
 
-  // Calculate live memory
   let totalMemBytes = 0;
   for (const c of runningContainers) {
     if (c.stats && c.stats.memory_current) {
@@ -233,21 +225,16 @@ function updateKPICards() {
     memEl.textContent = `${(totalMemBytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  // Images count & cached layers
   const imagesEl = document.getElementById('kpiImagesVal');
   const layersEl = document.getElementById('kpiLayersVal');
   if (imagesEl) imagesEl.textContent = state.images.length;
   if (layersEl) layersEl.textContent = `${state.layers.length} cached layers`;
 
-  // Bridge IP
   const bridgeEl = document.getElementById('kpiBridgeIP');
   if (bridgeEl) bridgeEl.textContent = state.system.bridge_ip || '—';
   document.getElementById('bridgeSubnetText').textContent = state.system.bridge_subnet || 'Bridge unavailable';
 }
 
-/**
- * Render Containers Table
- */
 function renderContainersTable() {
   const tbody = document.getElementById('containersTableBody');
   const filterInput = document.getElementById('filterContainersInput');
@@ -298,7 +285,6 @@ function renderContainersTable() {
     const statusClass = isRunning ? 'running' : (c.status === 'Stopped' ? 'stopped' : 'exited');
     const shortId = c.id.substring(0, 12);
 
-    // Memory bar calculation
     let memDisplay = 'Unlimited';
     let memPercent = 0;
     if (c.memory_limit > 0) {
@@ -367,9 +353,6 @@ function renderContainersTable() {
   restoreTableFocus(tbody, focusedAction);
 }
 
-/**
- * Render Images Table
- */
 function renderImagesTable() {
   const tbody = document.getElementById('imagesTableBody');
   const countBadge = document.getElementById('imagesCountBadge');
@@ -424,9 +407,6 @@ function renderImagesTable() {
   restoreTableFocus(tbody, focusedAction);
 }
 
-/**
- * Render OverlayFS Layers Grid
- */
 function renderLayersGrid() {
   const container = document.getElementById('layersGrid');
   if (!container) return;
@@ -454,9 +434,6 @@ function renderLayersGrid() {
   }).join('');
 }
 
-/**
- * Render Network Topology
- */
 function renderNetworkTopology() {
   const container = document.getElementById('networkContainersList');
   if (!container) return;
@@ -506,9 +483,6 @@ function updateQuickPicks() {
   }).join('');
 }
 
-/**
- * Container Lifecycle Actions
- */
 async function stopContainer(id) {
   try {
     showToast(`Stopping container ${id.substring(0, 12)}...`, 'info');
@@ -609,9 +583,6 @@ async function handleRunSubmit(e) {
   }
 }
 
-/**
- * Image Actions: Pull & Remove
- */
 async function handlePullSubmit(e) {
   e.preventDefault();
   if (state.pulling) return;
@@ -680,9 +651,6 @@ async function removeImage(imageName) {
   }
 }
 
-/**
- * Dockerfile Builder Trigger
- */
 async function triggerBuild() {
   if (state.building) return;
   for (const id of ['buildTargetTag', 'buildContextDir']) {
@@ -742,9 +710,6 @@ function clearBuildLogs() {
   if (consoleEl) consoleEl.textContent = 'Logs cleared. Ready for next build.';
 }
 
-/**
- * Logs Modal
- */
 async function openLogsModal(containerId, name) {
   state.activeLogContainerId = containerId;
   document.getElementById('logsContent').textContent = 'Loading logs…';
@@ -788,9 +753,6 @@ function closeLogsModal() {
   if (state.logTimer) clearInterval(state.logTimer);
 }
 
-/**
- * Modals & Navigation
- */
 function openRunModal() {
   showDialog(document.getElementById('runModal'), '#runImageSelect');
 }
@@ -899,6 +861,11 @@ function switchTab(tabName) {
     document.getElementById('tabBtnDocs')?.classList.add('active');
     document.getElementById('viewDocs')?.classList.add('active');
     document.getElementById('pageTitle').textContent = 'Documentation';
+  } else if (tabName === 'oslab') {
+    document.getElementById('tabBtnOSLab')?.classList.add('active');
+    document.getElementById('viewOSLab')?.classList.add('active');
+    document.getElementById('pageTitle').textContent = 'OS Kernel Lab';
+    fetchOSLabData();
   }
   document.querySelectorAll('.nav-item').forEach(button => {
     if (button.classList.contains('active')) button.setAttribute('aria-current', 'page');
@@ -911,7 +878,6 @@ function switchTab(tabName) {
 
 function copySnippet(btn, text) {
   if (!navigator.clipboard) {
-    // fallback
     const textarea = document.createElement('textarea');
     textarea.value = text;
     document.body.appendChild(textarea);
@@ -930,9 +896,6 @@ function copySnippet(btn, text) {
   });
 }
 
-/**
- * Toast Notification Utility
- */
 function showToast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
   if (!container) return;
@@ -972,7 +935,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Keep keyboard users on the same action while live data refreshes.
 function captureTableFocus(table) {
   const active = document.activeElement;
   return table.contains(active) && active.matches('button[data-action]') ? { ...active.dataset } : null;
@@ -982,4 +944,319 @@ function restoreTableFocus(table, previous) {
   const button = [...table.querySelectorAll('button[data-action]')].find(button =>
     Object.keys(previous).every(key => button.dataset[key] === previous[key]));
   (button || table.closest('.table-responsive')).focus({ preventScroll: true });
+}
+
+let activeOSContainerId = '';
+let activeOSSubView = 'namespaces';
+
+function switchOSSubView(subId) {
+  activeOSSubView = subId;
+  const subviews = {
+    namespaces: { btn: 'btnSubNamespaces', view: 'subViewNamespaces' },
+    chaos: { btn: 'btnSubChaos', view: 'subViewChaos' },
+    storage: { btn: 'btnSubStorage', view: 'subViewStorage' },
+    network: { btn: 'btnSubNetwork', view: 'subViewNetwork' },
+    lifecycle: { btn: 'btnSubLifecycle', view: 'subViewLifecycle' },
+  };
+
+  Object.keys(subviews).forEach(k => {
+    const isTarget = k === subId;
+    document.getElementById(subviews[k].btn)?.classList.toggle('active', isTarget);
+    document.getElementById(subviews[k].view)?.classList.toggle('active', isTarget);
+  });
+}
+
+function onOSContainerChange(cid) {
+  activeOSContainerId = cid;
+  loadSelectedOSContainer();
+}
+
+async function fetchOSLabData() {
+  try {
+    const res = await fetch('/api/containers');
+    if (!res.ok) return;
+    const containers = await res.json();
+    const select = document.getElementById('osContainerSelect');
+    if (!select) return;
+
+    const previousCid = activeOSContainerId || select.value;
+    select.innerHTML = '';
+
+    if (!containers || containers.length === 0) {
+      select.innerHTML = '<option value="">(No containers found - launch one first)</option>';
+      activeOSContainerId = '';
+      return;
+    }
+
+    containers.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      const statusIcon = c.status === 'running' ? '🟢' : '⚪';
+      opt.textContent = `${statusIcon} ${c.name || c.id.slice(0, 12)} (${c.image}) [${c.status}]`;
+      select.appendChild(opt);
+    });
+
+    if (previousCid && containers.some(c => c.id === previousCid)) {
+      select.value = previousCid;
+      activeOSContainerId = previousCid;
+    } else {
+      select.value = containers[0].id;
+      activeOSContainerId = containers[0].id;
+    }
+
+    loadSelectedOSContainer();
+    fetchOSLifecycle();
+  } catch (err) {
+    console.error('Failed to load OS Lab container list:', err);
+  }
+}
+
+async function loadSelectedOSContainer() {
+  if (!activeOSContainerId) return;
+
+  fetchOSNamespaces(activeOSContainerId);
+
+  fetchOSCgroups(activeOSContainerId);
+
+  fetchOSStorage(activeOSContainerId);
+
+  fetchOSNetwork(activeOSContainerId);
+}
+
+async function fetchOSNamespaces(cid) {
+  try {
+    const res = await fetch(`/api/os/namespaces?cid=${encodeURIComponent(cid)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    document.getElementById('osHostPIDVal').textContent = data.host_pid > 0 ? data.host_pid : 'N/A (Exited)';
+    document.getElementById('osNSpidText').textContent = data.nspid ? `NSpid: ${data.nspid}` : 'NSpid: isolated';
+    document.getElementById('osTargetStatus').textContent = `Status: ${data.status || 'unknown'}`;
+    document.getElementById('osTargetHostPID').textContent = `Host PID: ${data.host_pid || '-'}`;
+
+    const tbody = document.getElementById('osNamespaceTableBody');
+    if (!tbody) return;
+
+    if (!data.namespaces || data.namespaces.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No namespace data found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.namespaces.map(ns => `
+      <tr>
+        <td><strong>${escapeHtml(ns.type.toUpperCase())}</strong></td>
+        <td><span class="badge-inode" style="color: var(--accent); font-weight: 600;">${escapeHtml(ns.container_inode)}</span></td>
+        <td><span class="badge-inode">${escapeHtml(ns.host_inode)}</span></td>
+        <td>
+          <span class="${ns.is_isolated ? 'badge-iso-yes' : 'badge-iso-no'}">
+            ${ns.is_isolated ? 'ISOLATED' : 'SHARED/HOST'}
+          </span>
+        </td>
+        <td style="font-size: 12px; color: var(--text-muted);">${escapeHtml(ns.description)}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to fetch OS namespaces:', err);
+  }
+}
+
+async function fetchOSCgroups(cid) {
+  try {
+    const res = await fetch(`/api/os/cgroups?cid=${encodeURIComponent(cid)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const memCurrentMB = (data.memory_current / 1024 / 1024).toFixed(1);
+    const memMaxMB = data.memory_max > 0 ? (data.memory_max / 1024 / 1024).toFixed(1) + ' MB' : 'Unlimited';
+    document.getElementById('osCgroupMemVal').textContent = `${memCurrentMB} MB`;
+    document.getElementById('osCgroupMemLimit').textContent = `Limit: ${memMaxMB}`;
+
+    const pidsMax = data.pids_max > 0 ? data.pids_max : 'Unlimited';
+    document.getElementById('osCgroupPidsVal').textContent = data.pids_current || 0;
+    document.getElementById('osCgroupPidsLimit').textContent = `Limit: ${pidsMax} tasks`;
+
+    const cpuQuota = data.cpu_quota > 0 ? `${data.cpu_quota} / ${data.cpu_period} µs` : '100% (No limit)';
+    const throttledUsec = data.cpu_stat?.throttled_usec || 0;
+    document.getElementById('osCgroupCpuVal').textContent = cpuQuota;
+    document.getElementById('osCgroupCpuThrottled').textContent = `CFS Throttled: ${(throttledUsec / 1000).toFixed(1)} ms`;
+  } catch (err) {
+    console.error('Failed to fetch OS cgroups:', err);
+  }
+}
+
+async function runChaosExperiment(expType) {
+  if (!activeOSContainerId) {
+    showToast('Please select a running container first.', 'warning');
+    return;
+  }
+
+  const consoleEl = document.getElementById('chaosConsole');
+  const statusEl = document.getElementById('chaosStatusIndicator');
+  if (statusEl) statusEl.textContent = 'Kernel Executing...';
+
+  consoleEl.textContent = `[CONTAINIA KERNEL LAB]\n> Triggering experiment: ${expType} on container ${activeOSContainerId.slice(0, 12)}...\n> Interacting with Linux kernel subsystems...\n`;
+
+  try {
+    const res = await fetch('/api/os/chaos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cid: activeOSContainerId, experiment: expType }),
+    });
+
+    const result = await res.json();
+    if (statusEl) statusEl.textContent = result.success ? 'Success / Enforced' : 'Finished with notice';
+
+    if (result.error) {
+      consoleEl.textContent += `\n❌ Error: ${result.error}\n`;
+      showToast(result.error, 'error');
+      return;
+    }
+
+    consoleEl.textContent += `\n✅ ${result.message}\n\n`;
+    if (result.console_out) {
+      consoleEl.textContent += `--- KERNEL CONSOLE OUTPUT ---\n${result.console_out}\n`;
+    }
+
+    setTimeout(() => {
+      fetchOSCgroups(activeOSContainerId);
+      fetchOSStorage(activeOSContainerId);
+    }, 500);
+
+    showToast(`Experiment '${expType}' executed!`, 'success');
+  } catch (err) {
+    console.error('Failed to run chaos experiment:', err);
+    if (statusEl) statusEl.textContent = 'Error';
+    consoleEl.textContent += `\n❌ Execution failed: ${err.message}\n`;
+    showToast('Execution failed: ' + err.message, 'error');
+  }
+}
+
+async function fetchOSStorage(cid) {
+  try {
+    const res = await fetch(`/api/os/storage?cid=${encodeURIComponent(cid)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    document.getElementById('osMergedPath').textContent = data.mergeddir || '-';
+    document.getElementById('osUpperPath').textContent = data.upperdir || '-';
+    document.getElementById('osUpperStats').textContent =
+      `Total CoW modifications: ${data.upper_files ? data.upper_files.length : 0} files (${(data.total_cow_bytes || 0).toLocaleString()} bytes)`;
+
+    const lowerStack = document.getElementById('osLowerLayersStack');
+    if (lowerStack) {
+      if (data.lower_layers && data.lower_layers.length > 0) {
+        lowerStack.innerHTML = data.lower_layers.map(l => `
+          <div class="overlay-layer-card lower-layer">
+            <div class="layer-info-left">
+              <span class="layer-role" style="color: var(--accent-emerald);">Lower Layer #${l.index} (Image Layer: ${escapeHtml(l.digest.slice(0, 16))}...)</span>
+              <span class="layer-path">${escapeHtml(l.path)}</span>
+              <span class="layer-subtext">Content-Addressable Read-Only Layer (${(l.size / 1024 / 1024).toFixed(2)} MB)</span>
+            </div>
+            <span class="badge-version" style="color: var(--accent-emerald);">READ-ONLY</span>
+          </div>
+        `).join('');
+      } else {
+        lowerStack.innerHTML = `
+          <div class="overlay-layer-card lower-layer">
+            <div class="layer-info-left">
+              <span class="layer-role" style="color: var(--accent-emerald);">Base Image Rootfs</span>
+              <span class="layer-path">/var/lib/containia/images/&lt;image&gt;/rootfs</span>
+              <span class="layer-subtext">Original Read-Only Base Image Layer</span>
+            </div>
+            <span class="badge-version" style="color: var(--accent-emerald);">READ-ONLY</span>
+          </div>
+        `;
+      }
+    }
+
+    const tbody = document.getElementById('osUpperFilesTableBody');
+    if (tbody) {
+      if (!data.upper_files || data.upper_files.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No files modified in upperdir yet (Clean read-only baseline).</td></tr>';
+      } else {
+        tbody.innerHTML = data.upper_files.map(f => `
+          <tr>
+            <td><code style="color: var(--accent);">${escapeHtml(f.path)}</code></td>
+            <td>${f.size.toLocaleString()} B</td>
+            <td style="font-size: 11px; color: var(--text-dim);">${escapeHtml(f.mod_time)}</td>
+            <td>
+              ${f.is_char_dev
+                ? '<span class="badge-version" style="color: var(--accent-rose);">WHITEOUT (c 0 0)</span>'
+                : '<span class="badge-version" style="color: var(--accent-amber);">COW INODE</span>'}
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch OS storage:', err);
+  }
+}
+
+async function fetchOSNetwork(cid) {
+  try {
+    const res = await fetch(`/api/os/network?cid=${encodeURIComponent(cid)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    document.getElementById('osTargetIP').textContent = `IP: ${data.container_ip || '-'}`;
+    document.getElementById('osNetContDev').textContent = data.container_veth || 'eth0';
+    document.getElementById('osNetContIP').textContent = data.container_ip || 'No IP';
+    document.getElementById('osNetHostDev').textContent = data.host_veth || 'veth-host';
+    document.getElementById('osNetBridgeName').textContent = data.bridge_name || 'containia0';
+    document.getElementById('osNetBridgeIP').textContent = data.bridge_ip ? `${data.bridge_ip}/24` : '172.18.0.1/24';
+
+    const tbody = document.getElementById('osNatRulesTableBody');
+    if (tbody) {
+      if (!data.nat_rules || data.nat_rules.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td><code>-A POSTROUTING -s 172.18.0.0/24 ! -o containia0 -j MASQUERADE</code></td>
+            <td><span class="badge-version">MASQUERADE</span></td>
+            <td>Allows containers on 172.18.0.0/24 subnet to reach external LAN/Internet.</td>
+          </tr>
+        `;
+      } else {
+        tbody.innerHTML = data.nat_rules.map(r => `
+          <tr>
+            <td><code style="word-break: break-all;">${escapeHtml(r)}</code></td>
+            <td><span class="badge-version">${r.includes('DNAT') ? 'DNAT (Port Fwd)' : 'MASQUERADE'}</span></td>
+            <td>${r.includes('DNAT') ? 'Translates host incoming port to container private IP.' : 'Outbound NAT translation.'}</td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch OS network:', err);
+  }
+}
+
+async function fetchOSLifecycle() {
+  try {
+    const res = await fetch('/api/os/lifecycle');
+    if (!res.ok) return;
+    const steps = await res.json();
+
+    const timeline = document.getElementById('osLifecycleTimeline');
+    if (!timeline) return;
+
+    timeline.innerHTML = steps.map(s => `
+      <div class="lifecycle-step">
+        <div class="lifecycle-num">${s.step_number}</div>
+        <div class="lifecycle-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <h4 class="lifecycle-title">${escapeHtml(s.title)}</h4>
+            <span class="badge-version" style="color: var(--accent);">${escapeHtml(s.actor)}</span>
+          </div>
+          <code class="lifecycle-code">${escapeHtml(s.syscall)}</code>
+          <p class="lifecycle-rationale"><strong>Kernel Action:</strong> ${escapeHtml(s.kernel_action)}</p>
+          <p class="lifecycle-rationale" style="margin-top: 6px; color: var(--text-dim);">
+            <strong>OS Rationale:</strong> ${escapeHtml(s.os_rationale)}
+          </p>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to fetch OS lifecycle steps:', err);
+  }
 }

@@ -15,7 +15,6 @@ import (
 	"containia/pkg/config"
 )
 
-// Info holds display metadata for 'containia images'.
 type Info struct {
 	Repository string    `json:"repository"`
 	Tag        string    `json:"tag"`
@@ -24,31 +23,26 @@ type Info struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// Well-known lightweight rootfs tarball URLs as fallback for Alpine.
 var defaultImageURLs = map[string]string{
 	"alpine":        "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-minirootfs-3.21.3-x86_64.tar.gz",
 	"alpine:latest": "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-minirootfs-3.21.3-x86_64.tar.gz",
 	"alpine:3.21":   "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-minirootfs-3.21.3-x86_64.tar.gz",
 }
 
-// NormalizeImageName converts an image reference to a safe directory name.
 func NormalizeImageName(name string) string {
 	name = strings.ReplaceAll(name, ":", "_")
 	name = strings.ReplaceAll(name, "/", "_")
 	return name
 }
 
-// Exists checks if the image exists locally (either as OCI image or legacy rootfs).
 func Exists(imageName string) bool {
 	cleanName := NormalizeImageName(imageName)
 
-	// Check for OCI metadata file
 	metaPath := config.GetImageMetaPath(cleanName)
 	if _, err := os.Stat(metaPath); err == nil {
 		return true
 	}
 
-	// Check for legacy rootfs
 	rootfs := config.GetImageRootfsDir(cleanName)
 	if info, err := os.Stat(rootfs); err == nil && info.IsDir() {
 		return true
@@ -57,7 +51,6 @@ func Exists(imageName string) bool {
 	return false
 }
 
-// LoadMetadata loads the ImageMetadata descriptor if present.
 func LoadMetadata(imageName string) (*config.ImageMetadata, error) {
 	cleanName := NormalizeImageName(imageName)
 	metaPath := config.GetImageMetaPath(cleanName)
@@ -74,7 +67,6 @@ func LoadMetadata(imageName string) (*config.ImageMetadata, error) {
 	return &meta, nil
 }
 
-// Pull downloads an image using Docker Registry v2 / OCI protocol, with CDN fallback for Alpine.
 func Pull(imageRef string) error {
 	cleanName := NormalizeImageName(imageRef)
 	imageDir := filepath.Join(config.GetImagesDir(), cleanName)
@@ -90,7 +82,6 @@ func Pull(imageRef string) error {
 	client := NewRegistryClient(registry, repository)
 	err := client.Authenticate()
 	if err == nil {
-		// Attempt OCI pull
 		manifest, fetchErr := client.FetchManifest(tag)
 		if fetchErr == nil && manifest != nil {
 			var configDigest string
@@ -101,7 +92,6 @@ func Pull(imageRef string) error {
 				cfgFile, _ = client.FetchConfigBlob(configDigest)
 			}
 
-			// Download and extract each layer
 			totalLayers := len(manifest.Layers)
 			var layerDigests []string
 			var totalSize int64
@@ -114,12 +104,10 @@ func Pull(imageRef string) error {
 				}
 			}
 
-			// Prepare image destination directory
 			if err := os.MkdirAll(imageDir, 0755); err != nil {
 				return fmt.Errorf("failed to create image dir: %w", err)
 			}
 
-			// Construct image metadata
 			imgID := configDigest
 			if strings.HasPrefix(imgID, "sha256:") {
 				imgID = strings.TrimPrefix(imgID, "sha256:")
@@ -166,7 +154,6 @@ func Pull(imageRef string) error {
 		fmt.Printf("Registry auth failed (%v). Checking fallbacks...\n", err)
 	}
 
-	// Fallback to Alpine CDN if image is alpine
 	if strings.Contains(imageRef, "alpine") {
 		return pullAlpineTarball(imageRef, cleanName)
 	}
@@ -199,13 +186,11 @@ func pullAlpineTarball(imageRef, cleanName string) error {
 		return fmt.Errorf("failed to extract tarball: %w", err)
 	}
 
-	// Ensure DNS works
 	resolvConf := filepath.Join(destDir, "etc", "resolv.conf")
 	if _, err := os.Stat(resolvConf); os.IsNotExist(err) {
 		_ = os.WriteFile(resolvConf, []byte("nameserver 8.8.8.8\nnameserver 1.1.1.1\n"), 0644)
 	}
 
-	// Create metadata for fallback image
 	meta := config.ImageMetadata{
 		Name:      imageRef,
 		Tag:       "latest",
@@ -221,7 +206,6 @@ func pullAlpineTarball(imageRef, cleanName string) error {
 	return nil
 }
 
-// List returns all downloaded rootfs images in /var/lib/containia/images.
 func List() ([]Info, error) {
 	imagesDir := config.GetImagesDir()
 	if err := os.MkdirAll(imagesDir, 0755); err != nil {
@@ -260,7 +244,6 @@ func List() ([]Info, error) {
 			continue
 		}
 
-		// Legacy image directory
 		imgPath := filepath.Join(imagesDir, cleanName)
 		dirSize, _ := getDirSize(imgPath)
 		info, _ := entry.Info()
@@ -276,7 +259,6 @@ func List() ([]Info, error) {
 	return results, nil
 }
 
-// Remove deletes an image and cleans up unused layers (garbage collection).
 func Remove(imageName string) error {
 	cleanName := NormalizeImageName(imageName)
 	imgDir := filepath.Join(config.GetImagesDir(), cleanName)
@@ -285,12 +267,10 @@ func Remove(imageName string) error {
 		return fmt.Errorf("no such image: %s", imageName)
 	}
 
-	// Delete image metadata & directory
 	if err := os.RemoveAll(imgDir); err != nil {
 		return fmt.Errorf("failed to remove image directory: %w", err)
 	}
 
-	// Perform Layer Garbage Collection: find all in-use layers
 	usedLayers := make(map[string]bool)
 	allImages, _ := List()
 	for _, img := range allImages {
@@ -303,7 +283,6 @@ func Remove(imageName string) error {
 		}
 	}
 
-	// Delete unreferenced layers
 	layersDir := config.GetLayersDir()
 	if layerEntries, err := os.ReadDir(layersDir); err == nil {
 		for _, entry := range layerEntries {
