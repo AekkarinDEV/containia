@@ -1,4 +1,4 @@
-FROM oven/bun:latest
+FROM node:24
 
 WORKDIR /app
 
@@ -9,4 +9,4 @@ COPY . /app
 
 EXPOSE 3000
 
-CMD ["bun", "run", "dev"]
+CMD ["npm", "run", "dev"]

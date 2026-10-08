@@ -25,13 +25,13 @@ for c in test-frontend test-backend test-db; do
     $CONTAINIA rm -f "$c" 2>/dev/null || true
 done
 
-# Step 1: Install dependencies using Bun container volume mount
-echo -e "\n${YELLOW}[Step 1] Preparing Node/Bun dependencies for Express & Next.js...${NC}"
+# Step 1: Install dependencies using a Node.js container volume mount
+echo -e "\n${YELLOW}[Step 1] Preparing Node.js dependencies for Express & Next.js...${NC}"
 echo "Installing Express dependencies..."
-$CONTAINIA run --rm -v "$(pwd)/Project/express:/app" -w /app oven/bun:latest bun install
+$CONTAINIA run --rm -v "$(pwd)/Project/express:/app" -w /app node:24 npm ci
 
 echo "Installing Next.js dependencies..."
-$CONTAINIA run --rm -v "$(pwd)/Project/nextjs:/app" -w /app oven/bun:latest bun install
+$CONTAINIA run --rm -v "$(pwd)/Project/nextjs:/app" -w /app node:24 npm ci
 
 # Step 2: Build OCI Images using containia build
 echo -e "\n${YELLOW}[Step 2] Building 3-tier OCI images with containia build...${NC}"
@@ -39,7 +39,7 @@ echo -e "\n${YELLOW}[Step 2] Building 3-tier OCI images with containia build...$
 echo -e "--> Building ${CYAN}test-db:1.0${NC} (PostgreSQL 18)..."
 $CONTAINIA build -t test-db:1.0 ./Project/db
 
-echo -e "--> Building ${CYAN}test-backend:1.0${NC} (Express Bun API)..."
+echo -e "--> Building ${CYAN}test-backend:1.0${NC} (Express Node.js API)..."
 $CONTAINIA build -t test-backend:1.0 ./Project/express
 
 echo -e "--> Building ${CYAN}test-frontend:1.0${NC} (Next.js App)..."
@@ -118,7 +118,7 @@ fi
 
 # Test 5.4: Inter-Service Networking (Backend -> DB)
 echo -n "Checking Inter-Service Network (test-backend -> test-db:5432) ... "
-DB_PING=$($CONTAINIA exec test-backend /usr/local/bin/bun -e "const net=require('net');const s=net.createConnection(5432,'test-db',()=>{console.log('CONNECTED');s.end();process.exit(0);});s.on('error',e=>{console.log('ERR:'+e.message);process.exit(1);});" 2>/dev/null || true)
+DB_PING=$($CONTAINIA exec test-backend /usr/local/bin/node -e "const net=require('net');const s=net.createConnection(5432,'test-db',()=>{console.log('CONNECTED');s.end();process.exit(0);});s.on('error',e=>{console.log('ERR:'+e.message);process.exit(1);});" 2>/dev/null || true)
 
 if echo "$DB_PING" | grep -q "CONNECTED"; then
     echo -e "${GREEN}PASSED${NC} (Connected to test-db:5432 via /etc/hosts)"

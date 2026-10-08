@@ -3,13 +3,16 @@
 To install dependencies:
 
 ```bash
-bun install
+npm ci
 ```
 
 To run:
 
 ```bash
-bun run index.ts
+npm start
 ```
 
-This project was created using `bun init` in bun v1.4.2. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+The app runs with Node.js 24.
+
+Before building the image with Containia, run `npm ci` in this directory so
+`node_modules` is included by the Dockerfile's `COPY` step.

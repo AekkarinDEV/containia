@@ -14,6 +14,9 @@ import (
 
 	"containia/pkg/config"
 	"containia/pkg/image"
+
+	"github.com/moby/patternmatcher"
+	"github.com/moby/patternmatcher/ignorefile"
 )
 
 func Build(contextDir, dockerfilePath, tag string) error {
@@ -29,12 +32,7 @@ func Build(contextDir, dockerfilePath, tag string) error {
 	lines := strings.Split(string(content), "\n")
 	var meta config.ImageMetadata
 	meta.CreatedAt = time.Now()
-	meta.Name = tag
-	meta.Tag = "latest"
-	if parts := strings.Split(tag, ":"); len(parts) == 2 {
-		meta.Name = parts[0]
-		meta.Tag = parts[1]
-	}
+	meta.Name, meta.Tag = image.SplitNameTag(tag)
 	meta.Config.ExposedPorts = make(map[string]interface{})
 
 	step := 1
@@ -64,6 +62,9 @@ func Build(contextDir, dockerfilePath, tag string) error {
 				if err := image.Pull(baseImage); err != nil {
 					return fmt.Errorf("failed to pull base image '%s': %w", baseImage, err)
 				}
+			}
+			if err := image.SetInternal(baseImage, true); err != nil {
+				return fmt.Errorf("failed to mark base image '%s' as internal: %w", baseImage, err)
 			}
 			baseMeta, err := image.LoadMetadata(baseImage)
 			if err == nil && baseMeta != nil {
@@ -118,6 +119,10 @@ func Build(contextDir, dockerfilePath, tag string) error {
 	}
 
 	meta.Layers = layers
+	meta.Size, err = image.LayersSize(layers)
+	if err != nil {
+		return fmt.Errorf("failed to calculate image size: %w", err)
+	}
 
 	hash := sha256.New()
 	hash.Write([]byte(strings.Join(meta.Layers, ":")))
@@ -168,7 +173,22 @@ func createCopyLayer(contextDir, src, dest string) (string, error) {
 	}
 
 	srcPath := filepath.Join(contextDir, src)
-	if err := copyPath(srcPath, targetDest); err != nil {
+	var matcher *patternmatcher.PatternMatcher
+	ignorePath := filepath.Join(contextDir, ".dockerignore")
+	if ignore, err := os.Open(ignorePath); err == nil {
+		patterns, readErr := ignorefile.ReadAll(ignore)
+		_ = ignore.Close()
+		if readErr != nil {
+			return "", readErr
+		}
+		matcher, err = patternmatcher.New(patterns)
+		if err != nil {
+			return "", fmt.Errorf("invalid .dockerignore: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	if err := copyPathWithIgnore(srcPath, targetDest, contextDir, matcher); err != nil {
 		return "", err
 	}
 
@@ -177,7 +197,11 @@ func createCopyLayer(contextDir, src, dest string) (string, error) {
 }
 
 func copyPath(src, dst string) error {
-	info, err := os.Stat(src)
+	return copyPathWithIgnore(src, dst, filepath.Dir(src), nil)
+}
+
+func copyPathWithIgnore(src, dst, contextDir string, matcher *patternmatcher.PatternMatcher) error {
+	info, err := os.Lstat(src)
 	if err != nil {
 		return err
 	}
@@ -187,15 +211,48 @@ func copyPath(src, dst string) error {
 			if err != nil {
 				return err
 			}
+			if matcher != nil {
+				contextRel, err := filepath.Rel(contextDir, path)
+				if err != nil {
+					return err
+				}
+				ignored, err := matcher.MatchesOrParentMatches(contextRel)
+				if err != nil {
+					return err
+				}
+				if ignored {
+					if info.IsDir() && !matcher.Exclusions() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 			rel, _ := filepath.Rel(src, path)
 			target := filepath.Join(dst, rel)
 			if info.IsDir() {
 				return os.MkdirAll(target, 0755)
 			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return copySymlink(path, target)
+			}
 			return copyFile(path, target)
 		})
 	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return copySymlink(src, dst)
+	}
 	return copyFile(src, dst)
+}
+
+func copySymlink(src, dst string) error {
+	link, err := os.Readlink(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	return os.Symlink(link, dst)
 }
 
 func copyFile(src, dst string) error {

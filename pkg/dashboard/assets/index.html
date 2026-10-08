@@ -348,13 +348,7 @@
 
               <div class="form-group">
                 <label for="buildDockerfileEditor">Dockerfile Instructions:</label>
-                <textarea id="buildDockerfileEditor" class="code-editor" rows="12" spellcheck="false">FROM postgres:18
-
-ENV POSTGRES_USER=postgres
-ENV POSTGRES_DB=os
-ENV POSTGRES_PASSWORD=password
-
-EXPOSE 5432</textarea>
+                <textarea id="buildDockerfileEditor" class="code-editor" rows="12" spellcheck="false" placeholder="Leave empty to use the Dockerfile in the context directory"></textarea>
               </div>
             </div>
 
@@ -1003,16 +997,31 @@ EXPOSE 5432</textarea>
             </div>
           </div>
 
+          <div class="form-group">
+            <label for="runPortsInput">Published ports (one per line, host:container)</label>
+            <textarea id="runPortsInput" class="code-editor" rows="2" placeholder="3000:3000&#10;8000:8000"></textarea>
+          </div>
           <details class="advanced-options">
             <summary>Resources &amp; advanced settings <span>Memory, CPU, environment, volumes</span></summary>
           <div class="form-row">
             <div class="form-group flex-1">
               <label for="runMemoryInput">Memory Limit (cgroups v2)</label>
-              <input type="text" id="runMemoryInput" class="input-text" placeholder="e.g. 128m, 512m, 1g" value="256m">
+              <input type="text" id="runMemoryInput" class="input-text" placeholder="No limit; e.g. 512m, 1g">
             </div>
             <div class="form-group flex-1">
               <label for="runCPUsInput">CPU Quota</label>
-              <input type="text" id="runCPUsInput" class="input-text" placeholder="e.g. 0.5, 1.0" value="0.5">
+              <input type="text" id="runCPUsInput" class="input-text" placeholder="No limit; e.g. 0.5, 1.0">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="runWorkingDirInput">Working directory</label>
+              <input type="text" id="runWorkingDirInput" class="input-text" placeholder="Default from image; e.g. /app">
+            </div>
+            <div class="form-group flex-1">
+              <label for="runPidsInput">Process limit</label>
+              <input type="number" id="runPidsInput" class="input-text" value="1000" min="1">
             </div>
           </div>
 
@@ -1026,7 +1035,7 @@ EXPOSE 5432</textarea>
             <textarea id="runVolumeInput" class="code-editor" rows="2" placeholder="/mnt/host/d/dev/containia/Project:/app"></textarea>
           </div>
           </details>
-          <p class="form-hint">Runs in the background. Defaults: 256 MB memory and 0.5 CPU.</p>
+          <p class="form-hint">Runs in the background. Publish a port to access the app from your browser.</p>
           <p id="runError" class="form-error" role="alert" hidden></p>
         </div>
 

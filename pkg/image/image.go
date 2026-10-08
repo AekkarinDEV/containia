@@ -16,6 +16,7 @@ import (
 )
 
 type Info struct {
+	Reference  string    `json:"reference"`
 	Repository string    `json:"repository"`
 	Tag        string    `json:"tag"`
 	ID         string    `json:"id"`
@@ -33,6 +34,15 @@ func NormalizeImageName(name string) string {
 	name = strings.ReplaceAll(name, ":", "_")
 	name = strings.ReplaceAll(name, "/", "_")
 	return name
+}
+
+// SplitNameTag separates an image reference without mistaking a registry port for a tag.
+func SplitNameTag(ref string) (name, tag string) {
+	tag = "latest"
+	if idx := strings.LastIndex(ref, ":"); idx > strings.LastIndex(ref, "/") {
+		return ref[:idx], ref[idx+1:]
+	}
+	return ref, tag
 }
 
 func Exists(imageName string) bool {
@@ -53,8 +63,10 @@ func Exists(imageName string) bool {
 
 func LoadMetadata(imageName string) (*config.ImageMetadata, error) {
 	cleanName := NormalizeImageName(imageName)
-	metaPath := config.GetImageMetaPath(cleanName)
+	return loadMetadata(config.GetImageMetaPath(cleanName))
+}
 
+func loadMetadata(metaPath string) (*config.ImageMetadata, error) {
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return nil, err
@@ -67,11 +79,30 @@ func LoadMetadata(imageName string) (*config.ImageMetadata, error) {
 	return &meta, nil
 }
 
+func SetInternal(imageName string, internal bool) error {
+	meta, err := LoadMetadata(imageName)
+	if err != nil {
+		return err
+	}
+	if meta.Internal == internal {
+		return nil
+	}
+	meta.Internal = internal
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(config.GetImageMetaPath(NormalizeImageName(imageName)), data, 0644)
+}
+
 func Pull(imageRef string) error {
 	cleanName := NormalizeImageName(imageRef)
 	imageDir := filepath.Join(config.GetImagesDir(), cleanName)
 
 	if Exists(imageRef) {
+		if err := SetInternal(imageRef, false); err != nil {
+			return fmt.Errorf("failed to expose image '%s': %w", imageRef, err)
+		}
 		fmt.Printf("Image '%s' already exists locally\n", imageRef)
 		return nil
 	}
@@ -124,8 +155,9 @@ func Pull(imageRef string) error {
 				cfgDef = cfgFile.Config
 			}
 
+			name, _ := SplitNameTag(imageRef)
 			meta := config.ImageMetadata{
-				Name:         imageRef,
+				Name:         name,
 				Tag:          tag,
 				ID:           imgID,
 				ConfigDigest: configDigest,
@@ -191,9 +223,10 @@ func pullAlpineTarball(imageRef, cleanName string) error {
 		_ = os.WriteFile(resolvConf, []byte("nameserver 8.8.8.8\nnameserver 1.1.1.1\n"), 0644)
 	}
 
+	name, tag := SplitNameTag(imageRef)
 	meta := config.ImageMetadata{
-		Name:      imageRef,
-		Tag:       "latest",
+		Name:      name,
+		Tag:       tag,
 		ID:        cleanName[:min(len(cleanName), 12)],
 		Config:    config.ImageConfigDef{Cmd: []string{"/bin/sh"}},
 		Size:      3 * 1024 * 1024,
@@ -207,7 +240,14 @@ func pullAlpineTarball(imageRef, cleanName string) error {
 }
 
 func List() ([]Info, error) {
-	imagesDir := config.GetImagesDir()
+	return listImages(config.GetImagesDir())
+}
+
+func listImages(imagesDir string) ([]Info, error) {
+	return listImagesWithLayers(imagesDir, config.GetLayersDir())
+}
+
+func listImagesWithLayers(imagesDir, layersDir string) ([]Info, error) {
 	if err := os.MkdirAll(imagesDir, 0755); err != nil {
 		return nil, err
 	}
@@ -224,8 +264,11 @@ func List() ([]Info, error) {
 		}
 
 		cleanName := entry.Name()
-		meta, err := LoadMetadata(cleanName)
+		meta, err := loadMetadata(filepath.Join(imagesDir, cleanName, "image.json"))
 		if err == nil && meta != nil {
+			if meta.Internal {
+				continue
+			}
 			id := meta.ID
 			if len(id) > 12 {
 				id = id[:12]
@@ -234,11 +277,28 @@ func List() ([]Info, error) {
 			if tag == "" {
 				tag = "latest"
 			}
+			repository := meta.Name
+			// Older pulls stored the tag in both Name and Tag.
+			if strings.HasSuffix(repository, ":"+tag) {
+				repository = strings.TrimSuffix(repository, ":"+tag)
+			}
+			reference := repository
+			if NormalizeImageName(reference) != cleanName {
+				reference += ":" + tag
+			}
+			size := meta.Size
+			if size == 0 && len(meta.Layers) > 0 {
+				size, err = layersSize(meta.Layers, layersDir)
+				if err != nil {
+					return nil, fmt.Errorf("failed to calculate size of image '%s': %w", repository, err)
+				}
+			}
 			results = append(results, Info{
-				Repository: meta.Name,
+				Reference:  reference,
+				Repository: repository,
 				Tag:        tag,
 				ID:         id,
-				Size:       meta.Size,
+				Size:       size,
 				CreatedAt:  meta.CreatedAt,
 			})
 			continue
@@ -249,6 +309,7 @@ func List() ([]Info, error) {
 		info, _ := entry.Info()
 
 		results = append(results, Info{
+			Reference:  cleanName,
 			Repository: cleanName,
 			Tag:        "latest",
 			ID:         cleanName[:min(len(cleanName), 12)],
@@ -266,15 +327,41 @@ func Remove(imageName string) error {
 	if _, err := os.Stat(imgDir); os.IsNotExist(err) {
 		return fmt.Errorf("no such image: %s", imageName)
 	}
+	containers, err := os.ReadDir(config.GetContainersDir())
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, entry := range containers {
+		if !entry.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(config.GetContainerStatePath(entry.Name()))
+		if err != nil {
+			return fmt.Errorf("failed to check image usage: %w", err)
+		}
+		var state config.ContainerState
+		if err := json.Unmarshal(data, &state); err != nil {
+			return fmt.Errorf("failed to check image usage: %w", err)
+		}
+		if NormalizeImageName(state.Image) == cleanName {
+			return fmt.Errorf("image %s is used by container %s (%s, %s); remove the container first (in Web UI: Containers > Remove)", imageName, state.Name, state.ID, state.Status)
+		}
+	}
 
 	if err := os.RemoveAll(imgDir); err != nil {
 		return fmt.Errorf("failed to remove image directory: %w", err)
 	}
 
 	usedLayers := make(map[string]bool)
-	allImages, _ := List()
-	for _, img := range allImages {
-		m, err := LoadMetadata(img.Repository)
+	remainingImages, err := os.ReadDir(config.GetImagesDir())
+	if err != nil {
+		return err
+	}
+	for _, entry := range remainingImages {
+		if !entry.IsDir() {
+			continue
+		}
+		m, err := LoadMetadata(entry.Name())
 		if err == nil && m != nil {
 			for _, l := range m.Layers {
 				cleanLayer := strings.ReplaceAll(l, ":", "_")
@@ -351,11 +438,34 @@ func extractTarGz(gzipStream io.Reader, targetDir string) error {
 	return nil
 }
 
+// LayersSize measures the filesystem data in the image's shared and copied layers.
+func LayersSize(layers []string) (int64, error) {
+	return layersSize(layers, config.GetLayersDir())
+}
+
+func layersSize(layers []string, layersDir string) (int64, error) {
+	var size int64
+	seen := make(map[string]bool)
+	for _, digest := range layers {
+		if seen[digest] {
+			continue
+		}
+		seen[digest] = true
+		layerFs := filepath.Join(layersDir, filepath.Base(config.GetLayerDir(digest)), "fs")
+		layerSize, err := getDirSize(layerFs)
+		if err != nil {
+			return 0, fmt.Errorf("layer %s: %w", digest, err)
+		}
+		size += layerSize
+	}
+	return size, nil
+}
+
 func getDirSize(path string) (int64, error) {
 	var size int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if !info.IsDir() {
 			size += info.Size()

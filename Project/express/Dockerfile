@@ -1,4 +1,4 @@
-FROM oven/bun:latest
+FROM node:24
 
 WORKDIR /app
 
@@ -6,4 +6,4 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["bun", "index.ts"]
+CMD ["node", "index.ts"]

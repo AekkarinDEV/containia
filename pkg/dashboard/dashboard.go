@@ -47,6 +47,23 @@ type CgroupLiveStats struct {
 }
 
 func (s *Server) Start() error {
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("Web UI requires root privileges for Build, Run, and Delete; start it with sudo ./containia ui -p %d", s.Port)
+	}
+	for _, dir := range []string{config.GetImagesDir(), config.GetLayersDir(), config.GetContainersDir()} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to initialize Web UI storage %s: %w", dir, err)
+		}
+		probe, err := os.CreateTemp(dir, ".write-check-*")
+		if err != nil {
+			return fmt.Errorf("Web UI storage %s is not writable: %w", dir, err)
+		}
+		probe.Close()
+		if err := os.Remove(probe.Name()); err != nil {
+			return fmt.Errorf("failed to clean up Web UI storage check: %w", err)
+		}
+	}
+
 	mux := http.NewServeMux()
 
 	assetsSub, err := fs.Sub(assetsFS, "assets")
@@ -153,14 +170,17 @@ func (s *Server) handleContainerRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Image   string   `json:"image"`
-		Name    string   `json:"name"`
-		Command []string `json:"command"`
-		Memory  string   `json:"memory"`
-		CPUs    string   `json:"cpus"`
-		Env     []string `json:"env"`
-		Volumes []string `json:"volumes"`
-		Detach  bool     `json:"detach"`
+		Image      string   `json:"image"`
+		Name       string   `json:"name"`
+		Command    []string `json:"command"`
+		Memory     string   `json:"memory"`
+		CPUs       string   `json:"cpus"`
+		Env        []string `json:"env"`
+		Volumes    []string `json:"volumes"`
+		Ports      []string `json:"ports"`
+		WorkingDir string   `json:"working_dir"`
+		PidsLimit  int64    `json:"pids_limit"`
+		Detach     bool     `json:"detach"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -168,11 +188,18 @@ func (s *Server) handleContainerRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.TrimSpace(req.Image) == "" {
+		http.Error(w, "Image is required", http.StatusBadRequest)
+		return
+	}
+	if req.PidsLimit == 0 {
+		req.PidsLimit = 1000
+	}
 	flags := config.RunFlags{
 		Name:        req.Name,
 		Memory:      req.Memory,
 		CPUs:        req.CPUs,
-		PidsLimit:   100,
+		PidsLimit:   req.PidsLimit,
 		Interactive: false,
 		Tty:         false,
 		Detach:      true,
@@ -180,15 +207,18 @@ func (s *Server) handleContainerRun(w http.ResponseWriter, r *http.Request) {
 		Network:     "bridge",
 		Env:         req.Env,
 		Volumes:     req.Volumes,
+		Ports:       req.Ports,
+		WorkingDir:  req.WorkingDir,
 	}
 
-	go func() {
-		_ = runtime.Run(flags, req.Image, req.Command)
-	}()
+	if err := runtime.Run(flags, req.Image, req.Command); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"status":  "launching",
-		"message": "Container launch initiated in detached mode",
+		"status":  "running",
+		"message": "Container started",
 	})
 }
 
@@ -291,7 +321,7 @@ func (s *Server) handleImages(w http.ResponseWriter, r *http.Request) {
 
 	var results []ImageView
 	for _, img := range list {
-		meta, _ := image.LoadMetadata(img.Repository)
+		meta, _ := image.LoadMetadata(img.Reference)
 		var layers []string
 		if meta != nil {
 			layers = meta.Layers

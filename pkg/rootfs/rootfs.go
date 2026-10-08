@@ -106,20 +106,23 @@ func SetupDevNodes(mergedDir string) error {
 	if err := os.MkdirAll(devDir, 0755); err != nil {
 		return err
 	}
+	if err := unix.Mount("tmpfs", devDir, "tmpfs", unix.MS_NOSUID, "mode=0755"); err != nil {
+		return fmt.Errorf("failed to mount /dev: %w", err)
+	}
 
 	nodes := []string{"null", "zero", "full", "random", "urandom", "tty"}
 	for _, n := range nodes {
 		hostNode := "/dev/" + n
 		targetNode := filepath.Join(devDir, n)
 
-		if _, err := os.Stat(hostNode); err == nil {
-			if _, err := os.Stat(targetNode); os.IsNotExist(err) {
-				f, err := os.OpenFile(targetNode, os.O_CREATE|os.O_WRONLY, 0666)
-				if err == nil {
-					f.Close()
-				}
-			}
-			_ = unix.Mount(hostNode, targetNode, "bind", unix.MS_BIND, "")
+		if _, err := os.Stat(hostNode); err != nil {
+			return fmt.Errorf("device %s not available: %w", hostNode, err)
+		}
+		if err := os.WriteFile(targetNode, nil, 0666); err != nil {
+			return err
+		}
+		if err := unix.Mount(hostNode, targetNode, "bind", unix.MS_BIND, ""); err != nil {
+			return fmt.Errorf("failed to mount device %s: %w", n, err)
 		}
 	}
 
@@ -131,24 +134,39 @@ func SetupDevNodes(mergedDir string) error {
 	return nil
 }
 
-func MountEssentialFilesystems() error {
-	if err := os.MkdirAll("/proc", 0755); err != nil {
+func MountEssentialFilesystems(root string) error {
+	procDir := filepath.Join(root, "proc")
+	sysDir := filepath.Join(root, "sys")
+	shmDir := filepath.Join(root, "dev", "shm")
+	ptsDir := filepath.Join(root, "dev", "pts")
+	tmpDir := filepath.Join(root, "tmp")
+	if err := os.MkdirAll(procDir, 0755); err != nil {
 		return err
 	}
-	if err := unix.Mount("proc", "/proc", "proc", 0, ""); err != nil {
+	if err := unix.Mount("proc", procDir, "proc", 0, ""); err != nil {
 		return fmt.Errorf("failed to mount /proc: %w", err)
 	}
 
-	if err := os.MkdirAll("/sys", 0755); err != nil {
+	if err := os.MkdirAll(sysDir, 0755); err != nil {
 		return err
 	}
-	_ = unix.Mount("sysfs", "/sys", "sysfs", unix.MS_RDONLY, "")
+	_ = unix.Mount("sysfs", sysDir, "sysfs", unix.MS_RDONLY, "")
 
-	_ = os.MkdirAll("/dev/shm", 0777)
-	_ = unix.Mount("tmpfs", "/dev/shm", "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=1777")
+	_ = os.MkdirAll(shmDir, 0777)
+	_ = unix.Mount("tmpfs", shmDir, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=1777")
 
-	_ = os.MkdirAll("/dev/pts", 0755)
-	_ = unix.Mount("devpts", "/dev/pts", "devpts", unix.MS_NOSUID|unix.MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620")
+	_ = os.MkdirAll(ptsDir, 0755)
+	_ = unix.Mount("devpts", ptsDir, "devpts", unix.MS_NOSUID|unix.MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620")
+	ptmxPath := filepath.Join(root, "dev", "ptmx")
+	if _, err := os.Lstat(ptmxPath); os.IsNotExist(err) {
+		_ = os.Symlink("pts/ptmx", ptmxPath)
+	}
+	if err := os.MkdirAll(tmpDir, 01777); err != nil {
+		return err
+	}
+	if err := unix.Mount("tmpfs", tmpDir, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=1777"); err != nil {
+		return fmt.Errorf("failed to mount /tmp: %w", err)
+	}
 
 	return nil
 }

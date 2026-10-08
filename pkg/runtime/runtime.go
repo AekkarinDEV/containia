@@ -121,7 +121,13 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	defer syncR.Close()
 	defer syncW.Close()
 
-	cmd.ExtraFiles = []*os.File{syncR}
+	startupR, startupW, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("failed to create startup pipe: %w", err)
+	}
+	defer startupR.Close()
+	defer startupW.Close()
+	cmd.ExtraFiles = []*os.File{syncR, startupW}
 
 	var logFile *os.File
 	if flags.Detach {
@@ -139,19 +145,17 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 		cmd.Stderr = os.Stderr
 	}
 
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(containerEnvironment(mergedEnv),
 		fmt.Sprintf("CONTAINIA_ID=%s", containerID),
 		fmt.Sprintf("CONTAINIA_IMAGE=%s", imageName),
 	)
-	for _, env := range flags.Env {
-		cmd.Env = append(cmd.Env, env)
-	}
 
 	if err := cmd.Start(); err != nil {
 		_ = rootfs.UnmountOverlay(containerID)
 		_ = cg.Destroy()
 		return fmt.Errorf("failed to spawn container process: %w", err)
 	}
+	_ = startupW.Close()
 
 	pid := cmd.Process.Pid
 	state.PID = pid
@@ -175,8 +179,41 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 
 	_, _ = syncW.Write([]byte{1})
 	_ = syncW.Close()
+	_ = startupR.SetReadDeadline(time.Now().Add(30 * time.Second))
+	startupMessage, startupErr := io.ReadAll(startupR)
+	if startupErr != nil || len(startupMessage) > 0 {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		state.Status = config.StatusExited
+		state.ExitCode = 1
+		saveState(containerID, state)
+		network.CleanupPortForwarding(state.IPAddress, state.Ports)
+		network.CleanupContainerNetwork(containerID)
+		_ = rootfs.UnmountOverlay(containerID)
+		_ = cg.Destroy()
+		if startupErr != nil {
+			return fmt.Errorf("container startup failed: %w", startupErr)
+		}
+		return fmt.Errorf("container startup failed: %s", strings.TrimSpace(string(startupMessage)))
+	}
 
 	if flags.Detach {
+		go func() {
+			waitErr := cmd.Wait()
+			current, err := loadState(containerID)
+			if err == nil && current.Status == config.StatusRunning {
+				current.Status = config.StatusExited
+				if exitErr, ok := waitErr.(*exec.ExitError); ok {
+					current.ExitCode = exitErr.ExitCode()
+				}
+				saveState(containerID, current)
+			}
+			if state.IPAddress != "" {
+				network.CleanupPortForwarding(state.IPAddress, state.Ports)
+				network.CleanupContainerNetwork(containerID)
+			}
+			_ = cg.Destroy()
+		}()
 		fmt.Printf("%s\n", containerID)
 		return nil
 	}
@@ -204,7 +241,16 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	return waitErr
 }
 
-func Child(containerID string, userCommand []string) error {
+func Child(containerID string, userCommand []string) (childErr error) {
+	// Successful exec closes this descriptor; setup and exec errors are returned to the launcher.
+	startupPipe := os.NewFile(4, "startup_pipe")
+	unix.CloseOnExec(4)
+	defer func() {
+		if childErr != nil {
+			_, _ = startupPipe.Write([]byte(childErr.Error()))
+		}
+		_ = startupPipe.Close()
+	}()
 	syncPipe := os.NewFile(3, "sync_pipe")
 	if syncPipe != nil {
 		buf := make([]byte, 1)
@@ -222,9 +268,14 @@ func Child(containerID string, userCommand []string) error {
 		return fmt.Errorf("failed to set hostname: %w", err)
 	}
 
-	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-	os.Setenv("HOME", "/root")
-	os.Setenv("TERM", "xterm")
+	// The launcher may have inherited host locales or other host settings.
+	// Container processes use only defaults, image settings, and explicit overrides.
+	os.Clearenv()
+	for _, entry := range containerEnvironment(nil) {
+		key, value, _ := strings.Cut(entry, "=")
+		os.Setenv(key, value)
+	}
+	os.Setenv("CONTAINIA_ID", containerID)
 
 	etcDir := filepath.Join(mergedDir, "etc")
 	_ = os.MkdirAll(etcDir, 0755)
@@ -254,16 +305,18 @@ func Child(containerID string, userCommand []string) error {
 		return fmt.Errorf("failed to setup dev nodes: %w", err)
 	}
 
+	if err := rootfs.MountEssentialFilesystems(mergedDir); err != nil {
+		return fmt.Errorf("failed to mount filesystems: %w", err)
+	}
+
 	if err := rootfs.PivotRoot(mergedDir); err != nil {
 		return fmt.Errorf("pivot_root failed: %w", err)
 	}
 
-	if err := rootfs.MountEssentialFilesystems(); err != nil {
-		return fmt.Errorf("failed to mount filesystems: %w", err)
-	}
-
 	if state != nil && state.WorkingDir != "" {
-		_ = os.Chdir(state.WorkingDir)
+		if err := os.Chdir(state.WorkingDir); err != nil {
+			return fmt.Errorf("failed to enter working directory %s: %w", state.WorkingDir, err)
+		}
 	}
 
 	if len(userCommand) == 0 {
@@ -455,9 +508,31 @@ func Exec(containerID string, command []string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), state.Env...)
+	cmd.Env = containerEnvironment(state.Env)
 
 	return cmd.Run()
+}
+
+func containerEnvironment(overrides []string) []string {
+	env := []string{
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"HOME=/root",
+		"TERM=xterm",
+	}
+	positions := map[string]int{"PATH": 0, "HOME": 1, "TERM": 2}
+	for _, entry := range overrides {
+		key, _, valid := strings.Cut(entry, "=")
+		if !valid || key == "" {
+			continue
+		}
+		if index, exists := positions[key]; exists {
+			env[index] = entry
+		} else {
+			positions[key] = len(env)
+			env = append(env, entry)
+		}
+	}
+	return env
 }
 
 func generateID() string {

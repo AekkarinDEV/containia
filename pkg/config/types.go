@@ -67,6 +67,7 @@ type ImageConfigFile struct {
 type ImageMetadata struct {
 	Name         string         `json:"name"`
 	Tag          string         `json:"tag"`
+	Internal     bool           `json:"internal,omitempty"`
 	ID           string         `json:"id"`
 	ConfigDigest string         `json:"config_digest"`
 	Layers       []string       `json:"layers"`

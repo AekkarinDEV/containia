@@ -397,8 +397,8 @@ function renderImagesTable() {
         <td data-label="Created"><span class="text-dim text-xs">${createdStr}</span></td>
         <td data-label="Actions" class="text-right">
           <div class="table-actions">
-            <button class="btn-xs" data-action="run" data-image="${escapeHtml(img.repository)}">Run</button>
-            <button class="btn-xs btn-action-rm" data-action="delete" data-image="${escapeHtml(img.repository)}">Delete</button>
+            <button class="btn-xs" data-action="run" data-image="${escapeHtml(img.reference || img.repository)}">Run</button>
+            <button class="btn-xs btn-action-rm" data-action="delete" data-image="${escapeHtml(img.reference || img.repository)}">Delete</button>
           </div>
         </td>
       </tr>
@@ -478,7 +478,7 @@ function updateQuickPicks() {
     return;
   }
   qp.innerHTML = state.images.map(img => {
-    const fullRef = img.repository;
+    const fullRef = img.reference || img.repository;
     return `<button type="button" class="qp-btn" data-image="${escapeHtml(fullRef)}">${escapeHtml(fullRef)}</button>`;
   }).join('');
 }
@@ -539,9 +539,13 @@ async function handleRunSubmit(e) {
   const cpus = document.getElementById('runCPUsInput').value.trim();
   const envText = document.getElementById('runEnvInput').value.trim();
   const volText = document.getElementById('runVolumeInput').value.trim();
+	const portsText = document.getElementById('runPortsInput').value.trim();
+	const workingDir = document.getElementById('runWorkingDirInput').value.trim();
+	const pidsLimit = Number(document.getElementById('runPidsInput').value || 1000);
 
   const env = envText ? envText.split('\n').map(s => s.trim()).filter(Boolean) : [];
   const volumes = volText ? volText.split('\n').map(s => s.trim()).filter(Boolean) : [];
+	const ports = portsText ? portsText.split('\n').map(s => s.trim()).filter(Boolean) : [];
   const command = cmd ? cmd.split(' ') : [];
 
   showToast(`Launching container from ${image}...`, 'info');
@@ -558,6 +562,9 @@ async function handleRunSubmit(e) {
         cpus,
         env,
         volumes,
+			ports,
+			working_dir: workingDir,
+			pids_limit: pidsLimit,
         detach: true
       })
     });
@@ -566,7 +573,7 @@ async function handleRunSubmit(e) {
       const data = await res.json();
       closeRunModal();
       switchTab('containers');
-      showToast(`Launch requested: ${data.id?.substring(0, 12) || 'check the container list'}`, 'success');
+      showToast('Container started', 'success');
       fetchDashboardData();
     } else {
       const err = await res.text();
@@ -632,8 +639,37 @@ async function handlePullSubmit(e) {
 }
 
 async function removeImage(imageName) {
-  if (!confirm(`Are you sure you want to remove image ${imageName}? Unused layers will be cleaned up.`)) return;
   try {
+    const usageRes = await fetch('/api/containers');
+    if (!usageRes.ok) {
+      showToast('Could not check which containers use this image. Try again.', 'error');
+      return;
+    }
+    const containers = await usageRes.json();
+    const normalize = ref => ref.replace(/[:/]/g, '_');
+    const users = (containers || []).filter(c => normalize(c.image) === normalize(imageName));
+    const running = users.filter(c => c.status !== 'Stopped' && c.status !== 'Exited');
+    if (running.length) {
+      switchTab('containers');
+      showToast(`Stop and remove these containers before deleting ${imageName}: ${running.map(c => `${c.name} (${c.id.substring(0, 12)})`).join(', ')}`, 'error');
+      return;
+    }
+    const question = users.length
+      ? `Remove image ${imageName} and these stopped containers?\n\n${users.map(c => `${c.name} (${c.id.substring(0, 12)}, ${c.status})`).join('\n')}\n\nData stored inside these containers, including databases, will be permanently deleted. Bind-mounted host data will be kept.`
+      : `Are you sure you want to remove image ${imageName}? Unused layers will be cleaned up.`;
+    if (!confirm(question)) return;
+    for (const container of users) {
+      const removeRes = await fetch('/api/containers/rm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: container.id, force: false })
+      });
+      if (!removeRes.ok) {
+        showToast(`Failed to remove container ${container.name}: ${await removeRes.text()}`, 'error');
+        fetchDashboardData();
+        return;
+      }
+    }
     const res = await fetch('/api/images', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
