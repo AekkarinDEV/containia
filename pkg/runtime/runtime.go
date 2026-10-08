@@ -31,6 +31,9 @@ func Run(flags config.RunFlags, imageName string, command []string) error {
 	}
 
 	imgMeta, _ := image.LoadMetadata(imageName)
+	if flags.PublishExposedPorts && len(flags.Ports) == 0 && imgMeta != nil {
+		flags.Ports = network.DefaultPortMappings(imgMeta.Config.ExposedPorts)
+	}
 	if len(command) == 0 && imgMeta != nil {
 		if len(imgMeta.Config.Entrypoint) > 0 {
 			command = append(command, imgMeta.Config.Entrypoint...)

@@ -104,8 +104,12 @@ function setupTableActions() {
   });
   document.getElementById('quickPicksImages')?.addEventListener('click', event => {
     const button = event.target.closest('button[data-image]');
-    if (button) document.getElementById('runImageSelect').value = button.dataset.image;
+    if (button) {
+      document.getElementById('runImageSelect').value = button.dataset.image;
+      fillDefaultPorts();
+    }
   });
+  document.getElementById('runImageSelect')?.addEventListener('input', fillDefaultPorts);
 }
 
 function updateContext() {
@@ -317,7 +321,13 @@ function renderContainersTable() {
           <span class="image-tag-badge">${escapeHtml(c.image)}</span>
         </td>
         <td data-label="IP address">
-          <span class="font-mono text-xs">${c.ip_address ? escapeHtml(c.ip_address) : '<span class="text-dim">none</span>'}</span>
+          ${(c.ports || []).map(mapping => {
+            const parts = mapping.split(':');
+            const hostPort = parts[0];
+            const containerPort = parts.length === 1 ? parts[0] : parts[1];
+            return `<div class="font-mono text-xs"><span class="text-dim">Localhost:</span> localhost:${escapeHtml(hostPort)}<br><span class="text-dim">Container:</span> ${escapeHtml(c.ip_address || 'none')}:${escapeHtml(containerPort)}</div>`;
+          }).join('')}
+          ${!(c.ports || []).length ? `<span class="font-mono text-xs">${c.ip_address ? escapeHtml(c.ip_address) : '<span class="text-dim">none</span>'}</span>` : ''}
         </td>
         <td data-label="Memory">
           <div class="resource-bar-wrapper">
@@ -545,7 +555,7 @@ async function handleRunSubmit(e) {
 
   const env = envText ? envText.split('\n').map(s => s.trim()).filter(Boolean) : [];
   const volumes = volText ? volText.split('\n').map(s => s.trim()).filter(Boolean) : [];
-	const ports = portsText ? portsText.split('\n').map(s => s.trim()).filter(Boolean) : [];
+	const ports = portsText ? portsText.replace(/\s*:\s*/g, ':').split(/[\s,]+/).filter(Boolean) : [];
   const command = cmd ? cmd.split(' ') : [];
 
   showToast(`Launching container from ${image}...`, 'info');
@@ -863,6 +873,19 @@ function launchFromImage(imageRef) {
   openRunModal();
   const input = document.getElementById('runImageSelect');
   if (input) input.value = imageRef;
+  fillDefaultPorts();
+}
+
+function fillDefaultPorts() {
+  const reference = document.getElementById('runImageSelect').value.trim();
+  const image = state.images.find(img => (img.reference || img.repository) === reference);
+  const field = document.getElementById('runPortsInput');
+  const previous = field.dataset.defaultPorts || '';
+  if (!field.value.trim() || field.value === previous) {
+    const ports = (image?.default_ports || []).join('\n');
+    field.value = ports;
+    field.dataset.defaultPorts = ports;
+  }
 }
 
 function resetContainerFilters() {

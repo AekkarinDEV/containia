@@ -260,7 +260,7 @@
                   <th scope="col">Status</th>
                   <th scope="col">Name / ID</th>
                   <th scope="col">Image</th>
-                  <th scope="col">IP Address</th>
+                  <th scope="col">Localhost / Container</th>
                   <th scope="col">Memory (Live / Limit)</th>
                   <th scope="col">CPUs</th>
                   <th scope="col">Created</th>
@@ -998,8 +998,9 @@
           </div>
 
           <div class="form-group">
-            <label for="runPortsInput">Published ports (one per line, host:container)</label>
+            <label for="runPortsInput">Localhost ports (host:container)</label>
             <textarea id="runPortsInput" class="code-editor" rows="2" placeholder="3000:3000&#10;8000:8000"></textarea>
+            <p class="text-xs text-muted">Leave empty to publish the image's exposed TCP ports automatically: Next.js localhost:3000, Express localhost:8000, PostgreSQL localhost:5432. Custom mappings take priority.</p>
           </div>
           <details class="advanced-options">
             <summary>Resources &amp; advanced settings <span>Memory, CPU, environment, volumes</span></summary>

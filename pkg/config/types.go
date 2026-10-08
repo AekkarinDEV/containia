@@ -34,19 +34,20 @@ type ContainerState struct {
 }
 
 type RunFlags struct {
-	Name        string
-	Memory      string
-	CPUs        string
-	PidsLimit   int64
-	Interactive bool
-	Tty         bool
-	Detach      bool
-	Remove      bool
-	Network     string
-	WorkingDir  string
-	Ports       []string
-	Env         []string
-	Volumes     []string
+	Name                string
+	Memory              string
+	CPUs                string
+	PidsLimit           int64
+	Interactive         bool
+	Tty                 bool
+	Detach              bool
+	Remove              bool
+	Network             string
+	WorkingDir          string
+	Ports               []string
+	PublishExposedPorts bool
+	Env                 []string
+	Volumes             []string
 }
 
 type ImageConfigDef struct {

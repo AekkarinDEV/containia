@@ -196,19 +196,20 @@ func (s *Server) handleContainerRun(w http.ResponseWriter, r *http.Request) {
 		req.PidsLimit = 1000
 	}
 	flags := config.RunFlags{
-		Name:        req.Name,
-		Memory:      req.Memory,
-		CPUs:        req.CPUs,
-		PidsLimit:   req.PidsLimit,
-		Interactive: false,
-		Tty:         false,
-		Detach:      true,
-		Remove:      false,
-		Network:     "bridge",
-		Env:         req.Env,
-		Volumes:     req.Volumes,
-		Ports:       req.Ports,
-		WorkingDir:  req.WorkingDir,
+		Name:                req.Name,
+		Memory:              req.Memory,
+		CPUs:                req.CPUs,
+		PidsLimit:           req.PidsLimit,
+		Interactive:         false,
+		Tty:                 false,
+		Detach:              true,
+		Remove:              false,
+		Network:             "bridge",
+		Env:                 req.Env,
+		Volumes:             req.Volumes,
+		Ports:               req.Ports,
+		PublishExposedPorts: true,
+		WorkingDir:          req.WorkingDir,
 	}
 
 	if err := runtime.Run(flags, req.Image, req.Command); err != nil {
@@ -316,19 +317,23 @@ func (s *Server) handleImages(w http.ResponseWriter, r *http.Request) {
 
 	type ImageView struct {
 		image.Info
-		Layers []string `json:"layers"`
+		Layers       []string `json:"layers"`
+		DefaultPorts []string `json:"default_ports"`
 	}
 
 	var results []ImageView
 	for _, img := range list {
 		meta, _ := image.LoadMetadata(img.Reference)
 		var layers []string
+		var defaultPorts []string
 		if meta != nil {
 			layers = meta.Layers
+			defaultPorts = network.DefaultPortMappings(meta.Config.ExposedPorts)
 		}
 		results = append(results, ImageView{
-			Info:   img,
-			Layers: layers,
+			Info:         img,
+			Layers:       layers,
+			DefaultPorts: defaultPorts,
 		})
 	}
 
